@@ -1,0 +1,17 @@
+# System and tracking noise
+.DS_Store
+.git/
+.gitignore
+
+# Xcode specific project data and local settings
+DerivedData/
+build/
+artifacts/
+xcuserdata/
+VoidHomeOS.xcodeproj/project.xcworkspace/
+*.xcworkspace/
+
+# Swift Package Manager files
+.build/
+.swiftpm/
+Packages/

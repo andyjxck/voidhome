@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>NSCameraUsageDescription</key>
+	<string>Void Home OS needs camera access to scan documents and capture photos of your assets.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Void Home OS needs photo library access to save and manage photos of your home and assets.</string>
+	<key>NSDocumentsFolderUsageDescription</key>
+	<string>Void Home OS needs access to documents to store and manage your home documents.</string>
+</dict>
+</plist>
