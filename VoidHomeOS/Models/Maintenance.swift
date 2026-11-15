@@ -8,6 +8,10 @@ final class Maintenance {
     var cost: Double
     var notes: String
     var createdAt: Date
+    /// Stable id for the local reminder; assigned when a reminder is first scheduled.
+    var reminderID: String?
+    /// Whether a reminder should be scheduled before this task's date.
+    var remindersEnabled: Bool = true
     
     @Relationship(deleteRule: .nullify)
     var asset: Asset?

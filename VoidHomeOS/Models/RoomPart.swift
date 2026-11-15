@@ -16,6 +16,10 @@ final class RoomPart {
     @Relationship(deleteRule: .nullify)
     var room: Room?
 
+    /// Doors placed on this piece's edges; removed with the piece.
+    @Relationship(deleteRule: .cascade, inverse: \Door.part)
+    var doors: [Door] = []
+
     init(name: String = "Part", width: Double = 1.0, height: Double = 1.0, xOffset: Double = 0, yOffset: Double = 0) {
         self.name = name
         self.width = width

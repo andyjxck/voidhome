@@ -114,7 +114,10 @@ struct WarrantiesListView: View {
                                 .buttonStyle(PlainButtonStyle())
                                 .contextMenu {
                                     Button(role: .destructive) {
-                                        withAnimation { modelContext.delete(warranty) }
+                                        withAnimation {
+                                            NotificationService.shared.cancelWarrantyReminder(for: warranty)
+                                            modelContext.delete(warranty)
+                                        }
                                     } label: {
                                         Label("Delete", systemImage: "trash")
                                     }
@@ -296,7 +299,10 @@ struct WarrantyDetailView: View {
                     .padding(.bottom, 40)
                 }
             }
-            .sheet(isPresented: $showingEditWarranty) {
+            .sheet(isPresented: $showingEditWarranty, onDismiss: {
+                // Edits apply live, so reschedule (or cancel) the reminder from the warranty's current values.
+                NotificationService.shared.syncWarrantyReminder(for: warranty)
+            }) {
                 EditWarrantyView(warranty: warranty)
             }
         }
@@ -434,11 +440,9 @@ struct AddWarrantyView: View {
             warranty.asset = asset
         }
         
+        warranty.remindersEnabled = enableReminder
         modelContext.insert(warranty)
-        
-        if enableReminder {
-            NotificationService.shared.scheduleWarrantyExpiryReminder(for: warranty)
-        }
+        NotificationService.shared.syncWarrantyReminder(for: warranty)
     }
 }
 
@@ -511,6 +515,14 @@ struct EditWarrantyView: View {
                                     .tracking(1.5)
                                 DatePicker("", selection: $warranty.expiryDate, displayedComponents: .date)
                                     .datePickerStyle(.compact)
+                                    .foregroundColor(.white)
+                            }
+                            .padding(12)
+                            .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color.white.opacity(0.03)).overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Color.white.opacity(0.05), lineWidth: 0.5)))
+
+                            Toggle(isOn: $warranty.remindersEnabled) {
+                                Text("Expiry Reminder")
+                                    .font(.system(size: 15))
                                     .foregroundColor(.white)
                             }
                             .padding(12)

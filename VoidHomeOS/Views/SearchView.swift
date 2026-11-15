@@ -25,11 +25,12 @@ struct SearchView: View {
                asset.category.lowercased().contains(lowercasedSearch) ||
                asset.manufacturer.lowercased().contains(lowercasedSearch) ||
                asset.model.lowercased().contains(lowercasedSearch) ||
-               asset.serialNumber.lowercased().contains(lowercasedSearch) {
+               asset.serialNumber.lowercased().contains(lowercasedSearch) ||
+               asset.locationDisplay.lowercased().contains(lowercasedSearch) {
                 results.append(SearchResult(
                     id: asset.id,
                     title: asset.name,
-                    subtitle: asset.category,
+                    subtitle: asset.locationDisplay.isEmpty ? asset.category : "\(asset.category) · \(asset.locationDisplay)",
                     type: .asset,
                     icon: "cube.fill"
                 ))
@@ -38,11 +39,11 @@ struct SearchView: View {
         
         for room in rooms {
             if room.name.lowercased().contains(lowercasedSearch) ||
-               room.floor.lowercased().contains(lowercasedSearch) {
+               room.floorDisplay.lowercased().contains(lowercasedSearch) {
                 results.append(SearchResult(
                     id: room.id,
                     title: room.name,
-                    subtitle: room.floor,
+                    subtitle: room.floorDisplay,
                     type: .room,
                     icon: "door.room.fill"
                 ))
@@ -242,7 +243,9 @@ struct SearchView: View {
                 ProjectDetailView(project: project)
             }
         case .room:
-            RoomsListView()
+            if let room = rooms.first(where: { $0.id == result.id }) {
+                RoomDetailView(room: room)
+            }
         }
     }
 }

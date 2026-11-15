@@ -567,9 +567,10 @@ struct AssetRow: View {
                     .font(.system(size: 17, weight: .medium))
                     .foregroundColor(.white)
                 
-                Text(asset.category)
+                Text(asset.locationDisplay.isEmpty ? asset.category : "\(asset.category) · \(asset.locationDisplay)")
                     .font(.system(size: 14))
                     .foregroundColor(Color(red: 0.6, green: 0.55, blue: 0.7))
+                    .lineLimit(1)
             }
             
             Spacer()
@@ -606,5 +607,119 @@ struct AssetRow: View {
                         )
                 )
         )
+    }
+}
+
+
+// MARK: - Money (locale-aware currency)
+
+/// Formats and parses amounts in the currency of the user's region instead of a hard-coded "$".
+enum Money {
+    static var currencyCode: String { Locale.current.currency?.identifier ?? "GBP" }
+
+    static func format(_ value: Double, decimals: Int = 2) -> String {
+        value.formatted(.currency(code: currencyCode).precision(.fractionLength(decimals)))
+    }
+
+    /// Plain number for an edit field, using the locale's decimal separator ("12.50" or "12,50").
+    static func editString(_ value: Double) -> String {
+        value == 0 ? "" : value.formatted(.number.precision(.fractionLength(2)).grouping(.never))
+    }
+
+    /// Parses what the user typed, accepting the locale's decimal separator, a "." and currency symbols.
+    static func parse(_ text: String) -> Double? {
+        let allowed = CharacterSet(charactersIn: "0123456789.,-")
+        let cleaned = String(text.unicodeScalars.filter { allowed.contains($0) })
+        guard !cleaned.isEmpty else { return nil }
+        let formatter = NumberFormatter()
+        formatter.locale = .current
+        formatter.numberStyle = .decimal
+        if let n = formatter.number(from: cleaned) { return n.doubleValue }
+        return Double(cleaned.replacingOccurrences(of: ",", with: ""))
+    }
+
+    /// SF Symbol for the local currency.
+    static func symbolName(filled: Bool) -> String {
+        let base: String
+        switch currencyCode {
+        case "GBP": base = "sterlingsign.circle"
+        case "EUR": base = "eurosign.circle"
+        case "JPY", "CNY": base = "yensign.circle"
+        case "INR": base = "indianrupeesign.circle"
+        default: base = "dollarsign.circle"
+        }
+        return filled ? base + ".fill" : base
+    }
+}
+
+// MARK: - Shared pickers
+
+/// Menu picker for choosing a room, labelled with its floor.
+struct RoomPickerField: View {
+    var title: String = "Room"
+    @Binding var selection: Room?
+    @Query(sort: \Room.name) private var rooms: [Room]
+
+    private var sortedRooms: [Room] {
+        rooms.sorted { ($0.floorNumber, $0.name) < ($1.floorNumber, $1.name) }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title.uppercased())
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundColor(Color(red: 0.5, green: 0.45, blue: 0.6))
+                .tracking(1.5)
+            Picker("", selection: $selection) {
+                Text("None").tag(nil as Room?)
+                ForEach(sortedRooms) { room in
+                    Text("\(room.name) · \(room.floorDisplay)").tag(room as Room?)
+                }
+            }
+            .pickerStyle(.menu)
+            .tint(.white)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color.white.opacity(0.03)).overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Color.white.opacity(0.05), lineWidth: 0.5)))
+    }
+}
+
+/// Menu picker for choosing an asset.
+struct AssetPickerField: View {
+    var title: String = "Linked Asset"
+    @Binding var selection: Asset?
+    @Query(sort: \Asset.name) private var assets: [Asset]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title.uppercased())
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundColor(Color(red: 0.5, green: 0.45, blue: 0.6))
+                .tracking(1.5)
+            Picker("", selection: $selection) {
+                Text("None").tag(nil as Asset?)
+                ForEach(assets) { asset in
+                    Text(asset.room == nil ? asset.name : "\(asset.name) · \(asset.room!.name)").tag(asset as Asset?)
+                }
+            }
+            .pickerStyle(.menu)
+            .tint(.white)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color.white.opacity(0.03)).overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Color.white.opacity(0.05), lineWidth: 0.5)))
+    }
+}
+
+/// Small section header used on detail pages.
+struct GlassSectionHeader: View {
+    let title: String
+    var body: some View {
+        Text(title.uppercased())
+            .font(.system(size: 11, weight: .semibold))
+            .foregroundColor(Color(red: 0.5, green: 0.45, blue: 0.6))
+            .tracking(2)
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
 }

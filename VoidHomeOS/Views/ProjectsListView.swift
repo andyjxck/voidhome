@@ -215,7 +215,7 @@ struct ProjectRow: View {
                     )
                 
                 if project.budget > 0 {
-                    Text(String(format: "$%.0f", project.budget))
+                    Text(Money.format(project.budget, decimals: 0))
                         .font(.system(size: 14, weight: .light))
                         .foregroundColor(Color(red: 0.5, green: 0.45, blue: 0.6))
                 }
@@ -353,11 +353,11 @@ struct ProjectDetailView: View {
 
                         
                         if project.budget > 0 {
-                            GlassDetailCard(label: "Budget", value: String(format: "$%.2f", project.budget), icon: "dollarsign.circle", tint: Color(red: 0.3, green: 0.6, blue: 0.4))
+                            GlassDetailCard(label: "Budget", value: Money.format(project.budget), icon: Money.symbolName(filled: false), tint: Color(red: 0.3, green: 0.6, blue: 0.4))
                         }
                         
                         if project.actualCost > 0 {
-                            GlassDetailCard(label: "Actual Cost", value: String(format: "$%.2f", project.actualCost), icon: "chart.bar.fill", tint: Color(red: 0.8, green: 0.5, blue: 0.2))
+                            GlassDetailCard(label: "Actual Cost", value: Money.format(project.actualCost), icon: "chart.bar.fill", tint: Color(red: 0.8, green: 0.5, blue: 0.2))
                         }
                     }
                     .padding(.horizontal, 24)
@@ -582,7 +582,7 @@ struct AddProjectView: View {
                                     )
                             )
                             
-                            GlassTextField(title: "Budget", text: $budget, icon: "dollarsign.circle", tint: Color(red: 0.3, green: 0.6, blue: 0.4), keyboardType: .decimalPad)
+                            GlassTextField(title: "Budget", text: $budget, icon: Money.symbolName(filled: false), tint: Color(red: 0.3, green: 0.6, blue: 0.4), keyboardType: .decimalPad)
                             GlassTextField(title: "Actual Cost", text: $actualCost, icon: "chart.bar.fill", tint: Color(red: 0.8, green: 0.5, blue: 0.2), keyboardType: .decimalPad)
                             
                             VStack(alignment: .leading, spacing: 8) {
@@ -637,8 +637,8 @@ struct AddProjectView: View {
     }
     
     private func saveProject() {
-        let budgetValue = Double(budget) ?? 0.0
-        let actualCostValue = Double(actualCost) ?? 0.0
+        let budgetValue = Money.parse(budget) ?? 0.0
+        let actualCostValue = Money.parse(actualCost) ?? 0.0
         let project = Project(
             title: title,
             description: description,
@@ -666,8 +666,8 @@ struct EditProjectView: View {
     
     init(project: Project) {
         self.project = project
-        _budgetString = State(initialValue: String(format: "%.2f", project.budget))
-        _actualCostString = State(initialValue: String(format: "%.2f", project.actualCost))
+        _budgetString = State(initialValue: Money.editString(project.budget))
+        _actualCostString = State(initialValue: Money.editString(project.actualCost))
     }
     
     var body: some View {
@@ -757,14 +757,14 @@ struct EditProjectView: View {
                                     )
                             )
                             
-                            GlassTextField(title: "Budget", text: $budgetString, icon: "dollarsign.circle", tint: Color(red: 0.3, green: 0.6, blue: 0.4), keyboardType: .decimalPad)
+                            GlassTextField(title: "Budget", text: $budgetString, icon: Money.symbolName(filled: false), tint: Color(red: 0.3, green: 0.6, blue: 0.4), keyboardType: .decimalPad)
                                 .onChange(of: budgetString) { _, newValue in
-                                    project.budget = Double(newValue) ?? 0.0
+                                    project.budget = Money.parse(newValue) ?? 0.0
                                 }
                             
                             GlassTextField(title: "Actual Cost", text: $actualCostString, icon: "chart.bar.fill", tint: Color(red: 0.8, green: 0.5, blue: 0.2), keyboardType: .decimalPad)
                                 .onChange(of: actualCostString) { _, newValue in
-                                    project.actualCost = Double(newValue) ?? 0.0
+                                    project.actualCost = Money.parse(newValue) ?? 0.0
                                 }
                             
                             VStack(alignment: .leading, spacing: 8) {

@@ -22,7 +22,8 @@ struct TimelineView: View {
                     title: project.title,
                     subtitle: "Project (\(project.status.rawValue))",
                     type: .project,
-                    icon: "hammer.fill"
+                    icon: "hammer.fill",
+                    target: .project(project)
                 ))
             }
         }
@@ -35,7 +36,8 @@ struct TimelineView: View {
                     title: "Purchased \(asset.name)",
                     subtitle: asset.category.isEmpty ? "Asset" : asset.category,
                     type: .asset,
-                    icon: "cube.fill"
+                    icon: "cube.fill",
+                    target: .asset(asset)
                 ))
             }
         }
@@ -48,7 +50,8 @@ struct TimelineView: View {
                 title: maintenance.task,
                 subtitle: subtitle,
                 type: .maintenance,
-                icon: "wrench.and.screwdriver.fill"
+                icon: "wrench.and.screwdriver.fill",
+                target: .maintenance(maintenance)
             ))
         }
 
@@ -60,7 +63,8 @@ struct TimelineView: View {
                 title: "Warranty (\(warranty.provider))",
                 subtitle: subtitle,
                 type: .warranty,
-                icon: "shield.checkered"
+                icon: "shield.checkered",
+                target: .warranty(warranty)
             ))
         }
 
@@ -71,7 +75,8 @@ struct TimelineView: View {
                 title: "Added \(document.title)",
                 subtitle: "Document (\(document.type.rawValue))",
                 type: .asset,
-                icon: "doc.fill"
+                icon: "doc.fill",
+                target: .document(document)
             ))
         }
 
@@ -128,7 +133,10 @@ struct TimelineView: View {
                     } else {
                         VStack(spacing: 12) {
                             ForEach(events) { event in
-                                TimelineEventRow(event: event)
+                                NavigationLink(destination: destination(for: event.target)) {
+                                    TimelineEventRow(event: event)
+                                }
+                                .buttonStyle(PlainButtonStyle())
                             }
                         }
                         .padding(.horizontal, 24)
@@ -140,6 +148,26 @@ struct TimelineView: View {
         }
         .navigationBarHidden(true)
     }
+
+    @ViewBuilder
+    private func destination(for target: TimelineTarget) -> some View {
+        switch target {
+        case .project(let project): ProjectDetailView(project: project)
+        case .asset(let asset): AssetDetailView(asset: asset)
+        case .maintenance(let record): MaintenanceDetailView(maintenance: record)
+        case .warranty(let warranty): WarrantyDetailView(warranty: warranty)
+        case .document(let document): DocumentDetailView(document: document)
+        }
+    }
+}
+
+/// The record a timeline entry opens.
+enum TimelineTarget {
+    case project(Project)
+    case asset(Asset)
+    case maintenance(Maintenance)
+    case warranty(Warranty)
+    case document(Document)
 }
 
 struct TimelineEvent: Identifiable {
@@ -149,6 +177,7 @@ struct TimelineEvent: Identifiable {
     let subtitle: String
     let type: EventType
     let icon: String
+    let target: TimelineTarget
 }
 
 enum EventType {

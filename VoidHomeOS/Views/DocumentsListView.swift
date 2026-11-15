@@ -111,7 +111,10 @@ struct DocumentsListView: View {
                                         }
                                     }
                                     Button(role: .destructive) {
-                                        withAnimation { modelContext.delete(document) }
+                                        withAnimation {
+                                            document.deleteStoredFile()
+                                            modelContext.delete(document)
+                                        }
                                     } label: {
                                         Label("Delete", systemImage: "trash")
                                     }
@@ -318,6 +321,20 @@ struct DocumentDetailView: View {
                         GlassDetailCard(label: "Title", value: document.title, icon: "textformat", tint: Color(red: 0.2, green: 0.55, blue: 0.7))
                         GlassDetailCard(label: "Type", value: document.type.rawValue, icon: "doc.fill", tint: Color(red: 0.35, green: 0.3, blue: 0.65))
 
+                        if let asset = document.asset {
+                            NavigationLink(destination: AssetDetailView(asset: asset)) {
+                                GlassDetailCard(label: "Linked Asset", value: asset.name, icon: "cube.fill", tint: Color(red: 0.55, green: 0.3, blue: 0.6))
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                        }
+
+                        if let room = document.room ?? document.asset?.room {
+                            NavigationLink(destination: RoomDetailView(room: room)) {
+                                GlassDetailCard(label: document.room == nil ? "Room (via asset)" : "Room", value: "\(room.name) · \(room.floorDisplay)", icon: "square.split.bottomrightquarter", tint: Color(red: 0.25, green: 0.45, blue: 0.75))
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                        }
+
                         if let url = document.localFileURL {
                             // View file button
                             Button(action: { previewURL = url }) {
@@ -385,6 +402,22 @@ struct AddDocumentView: View {
     @State private var showingFilePicker = false
     @State private var pickedFileURL: URL?
     @State private var pickedFileName: String?
+    @State private var selectedAsset: Asset?
+    @State private var selectedRoom: Room?
+
+    // Scanning and text reading
+    @State private var showingScanner = false
+    @State private var scannedImages: [UIImage] = []
+    @State private var isReadingText = false
+    @State private var receiptInfo: ReceiptInfo?
+    @State private var applyReceiptToAsset = true
+
+    init(initialAsset: Asset? = nil, initialRoom: Room? = nil) {
+        _selectedAsset = State(initialValue: initialAsset)
+        _selectedRoom = State(initialValue: initialRoom ?? initialAsset?.room)
+    }
+
+    private var hasAttachment: Bool { pickedFileURL != nil || !scannedImages.isEmpty }
 
     var body: some View {
         ZStack {
@@ -412,34 +445,38 @@ struct AddDocumentView: View {
                         VStack(spacing: 16) {
                             GlassTextField(title: "Title", text: $title, icon: "textformat", tint: Color(red: 0.2, green: 0.55, blue: 0.7))
 
-                            // File upload button
-                            Button(action: { showingFilePicker = true }) {
-                                HStack(spacing: 10) {
-                                    Image(systemName: pickedFileName != nil ? "checkmark.circle.fill" : "arrow.up.doc.fill")
-                                        .font(.system(size: 18))
-                                        .foregroundColor(pickedFileName != nil ? Color.green : Color(red: 0.2, green: 0.55, blue: 0.7))
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text(pickedFileName != nil ? "File Selected" : "Upload File")
-                                            .font(.system(size: 15, weight: .medium))
-                                            .foregroundColor(.white)
-                                        if let name = pickedFileName {
-                                            Text(name)
-                                                .font(.system(size: 12))
-                                                .foregroundColor(Color(red: 0.5, green: 0.45, blue: 0.6))
-                                                .lineLimit(1)
-                                        }
-                                    }
-                                    Spacer()
+                            HStack(spacing: 12) {
+                                if DocumentScanner.isSupported {
+                                    attachButton(
+                                        icon: scannedImages.isEmpty ? "doc.viewfinder" : "checkmark.circle.fill",
+                                        title: scannedImages.isEmpty ? "Scan" : "\(scannedImages.count) page\(scannedImages.count == 1 ? "" : "s")",
+                                        done: !scannedImages.isEmpty
+                                    ) { showingScanner = true }
                                 }
-                                .padding(16)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                        .fill(Color.white.opacity(0.03))
-                                        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Color.white.opacity(0.08), lineWidth: 0.5))
-                                )
+                                attachButton(
+                                    icon: pickedFileName != nil ? "checkmark.circle.fill" : "arrow.up.doc.fill",
+                                    title: pickedFileName ?? "Upload File",
+                                    done: pickedFileName != nil
+                                ) { showingFilePicker = true }
                             }
 
-                            GlassTextField(title: "OCR Text (optional)", text: $ocrText, icon: "text.viewfinder", tint: Color(red: 0.35, green: 0.3, blue: 0.65), isMultiline: true)
+                            if !DocumentScanner.isSupported {
+                                Text("Scanning needs a device camera. You can still upload a file or photo.")
+                                    .font(.system(size: 12))
+                                    .foregroundColor(.white.opacity(0.45))
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+
+                            if isReadingText {
+                                HStack(spacing: 10) {
+                                    ProgressView().tint(.white)
+                                    Text("Reading text…")
+                                        .font(.system(size: 14))
+                                        .foregroundColor(.white.opacity(0.7))
+                                    Spacer()
+                                }
+                                .padding(.horizontal, 4)
+                            }
 
                             VStack(alignment: .leading, spacing: 8) {
                                 Text("TYPE")
@@ -454,12 +491,25 @@ struct AddDocumentView: View {
                                 .pickerStyle(.menu)
                                 .foregroundColor(.white)
                             }
+                            .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(12)
                             .background(
                                 RoundedRectangle(cornerRadius: 16, style: .continuous)
                                     .fill(Color.white.opacity(0.03))
                                     .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Color.white.opacity(0.05), lineWidth: 0.5))
                             )
+
+                            AssetPickerField(selection: $selectedAsset)
+                                .onChange(of: selectedAsset) { _, asset in
+                                    if selectedRoom == nil, let room = asset?.room { selectedRoom = room }
+                                }
+                            RoomPickerField(selection: $selectedRoom)
+
+                            if type == .receipt, let info = receiptInfo, info.total > 0 || info.date != nil || !info.retailer.isEmpty {
+                                receiptCard(info)
+                            }
+
+                            GlassTextField(title: "Text (read automatically, editable)", text: $ocrText, icon: "text.viewfinder", tint: Color(red: 0.35, green: 0.3, blue: 0.65), isMultiline: true)
                         }
                         .padding(.horizontal, 24)
                         .padding(.bottom, 40)
@@ -484,62 +534,124 @@ struct AddDocumentView: View {
         }
         .fileImporter(
             isPresented: $showingFilePicker,
-            allowedContentTypes: [
-                .pdf, .image, .jpeg, .png, .plainText, .rtf,
-                .data, .archive, .item
-            ],
+            allowedContentTypes: [.pdf, .image, .jpeg, .png, .plainText, .rtf, .data, .archive, .item],
             allowsMultipleSelection: false
         ) { result in
-            switch result {
-            case .success(let urls):
-                if let url = urls.first {
-                    pickedFileURL = url
-                    pickedFileName = url.lastPathComponent
-                    if title.isEmpty {
-                        title = url.deletingPathExtension().lastPathComponent
-                    }
-                }
-            case .failure:
-                break
+            if case .success(let urls) = result, let url = urls.first {
+                pickedFileURL = url
+                pickedFileName = url.lastPathComponent
+                scannedImages = []
+                if title.isEmpty { title = url.deletingPathExtension().lastPathComponent }
+                readText(fromPicked: url)
             }
         }
+        .fullScreenCover(isPresented: $showingScanner) {
+            DocumentScannerView(isPresented: $showingScanner, scannedImages: $scannedImages)
+                .ignoresSafeArea()
+        }
+        .onChange(of: scannedImages.count) { _, count in
+            guard count > 0 else { return }
+            pickedFileURL = nil
+            pickedFileName = nil
+            if title.isEmpty { title = "Scan \(Date().formatted(date: .abbreviated, time: .omitted))" }
+            readText(fromImages: scannedImages)
+        }
+        .onChange(of: type) { _, _ in updateReceiptInfo() }
+    }
+
+    private func attachButton(icon: String, title: String, done: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 10) {
+                Image(systemName: icon)
+                    .font(.system(size: 18))
+                    .foregroundColor(done ? Color.green : Color(red: 0.2, green: 0.55, blue: 0.7))
+                Text(title)
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundColor(.white)
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+            }
+            .padding(16)
+            .frame(maxWidth: .infinity)
+            .background(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(Color.white.opacity(0.03))
+                    .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Color.white.opacity(0.08), lineWidth: 0.5))
+            )
+        }
+    }
+
+    private func receiptCard(_ info: ReceiptInfo) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            GlassSectionHeader(title: "Receipt details found")
+            if !info.retailer.isEmpty {
+                Text("Shop: \(info.retailer)").font(.system(size: 14)).foregroundColor(.white)
+            }
+            if let date = info.date {
+                Text("Date: \(date.formatted(date: .abbreviated, time: .omitted))").font(.system(size: 14)).foregroundColor(.white)
+            }
+            if info.total > 0 {
+                Text("Total: \(Money.format(info.total))").font(.system(size: 14)).foregroundColor(.white)
+            }
+            if let asset = selectedAsset {
+                Toggle(isOn: $applyReceiptToAsset) {
+                    Text("Use for \(asset.name)'s price and purchase date where they're empty")
+                        .font(.system(size: 13))
+                        .foregroundColor(.white.opacity(0.8))
+                }
+            }
+        }
+        .padding(12)
+        .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color.white.opacity(0.03)).overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Color.white.opacity(0.05), lineWidth: 0.5)))
+    }
+
+    private func readText(fromPicked url: URL) {
+        isReadingText = true
+        Task {
+            let didAccess = url.startAccessingSecurityScopedResource()
+            let text = await OCRService.extractText(fromFileAt: url)
+            if didAccess { url.stopAccessingSecurityScopedResource() }
+            await MainActor.run {
+                if ocrText.isEmpty { ocrText = text }
+                isReadingText = false
+                updateReceiptInfo()
+            }
+        }
+    }
+
+    private func readText(fromImages images: [UIImage]) {
+        isReadingText = true
+        Task {
+            let text = await OCRService.recognizeText(from: images)
+            await MainActor.run {
+                if ocrText.isEmpty { ocrText = text }
+                isReadingText = false
+                updateReceiptInfo()
+            }
+        }
+    }
+
+    private func updateReceiptInfo() {
+        receiptInfo = (type == .receipt && !ocrText.isEmpty) ? OCRService.extractReceiptInfo(from: ocrText) : nil
     }
 
     private func saveDocument() {
         var savedPath = ""
         if let url = pickedFileURL {
-            // Copy file into app sandbox
-            let fm = FileManager.default
-            let docsDir = fm.urls(for: .documentDirectory, in: .userDomainMask).first!
-            let destDir = docsDir.appendingPathComponent("UploadedDocuments", isDirectory: true)
-            try? fm.createDirectory(at: destDir, withIntermediateDirectories: true)
-            let dest = destDir.appendingPathComponent(url.lastPathComponent)
-            // If file already exists, append a number
-            var finalDest = dest
-            var counter = 1
-            while fm.fileExists(atPath: finalDest.path) {
-                let name = url.deletingPathExtension().lastPathComponent
-                let ext = url.pathExtension
-                finalDest = destDir.appendingPathComponent("\(name)_\(counter).\(ext)")
-                counter += 1
-            }
-            // Access security-scoped resource
-            let didAccess = url.startAccessingSecurityScopedResource()
-            defer { if didAccess { url.stopAccessingSecurityScopedResource() } }
-            do {
-                try fm.copyItem(at: url, to: finalDest)
-                savedPath = finalDest.path
-            } catch {
-                // If copy fails, try to read data and write
-                if let data = try? Data(contentsOf: url) {
-                    try? data.write(to: finalDest)
-                    savedPath = finalDest.path
-                }
-            }
+            savedPath = DocumentStorage.importFile(from: url) ?? ""
+        } else if !scannedImages.isEmpty, let pdf = DocumentScanner.makePDF(from: scannedImages) {
+            savedPath = DocumentStorage.write(pdf, baseName: title, ext: "pdf") ?? ""
         }
 
         let document = Document(title: title, type: type, fileURL: savedPath, ocrText: ocrText)
+        document.asset = selectedAsset
+        document.room = selectedRoom
         modelContext.insert(document)
+
+        if type == .receipt, applyReceiptToAsset, let asset = selectedAsset, let info = receiptInfo {
+            if asset.purchasePrice == 0, info.total > 0 { asset.purchasePrice = info.total }
+            if asset.purchaseDate == nil, let date = info.date { asset.purchaseDate = date }
+        }
     }
 }
 
@@ -548,6 +660,7 @@ struct AddDocumentView: View {
 struct EditDocumentView: View {
     @Environment(\.dismiss) private var dismiss
     @Bindable var document: Document
+    @State private var isReadingText = false
 
     var body: some View {
         ZStack {
@@ -574,10 +687,30 @@ struct EditDocumentView: View {
 
                         VStack(spacing: 16) {
                             GlassTextField(title: "Title", text: $document.title, icon: "textformat", tint: Color(red: 0.2, green: 0.55, blue: 0.7))
-                            GlassTextField(title: "OCR Text", text: $document.ocrText, icon: "text.viewfinder", tint: Color(red: 0.35, green: 0.3, blue: 0.65), isMultiline: true)
 
-                            if !document.fileURL.isEmpty {
-                                GlassDetailCard(label: "File", value: document.fileURL, icon: "paperclip", tint: Color(red: 0.3, green: 0.5, blue: 0.55))
+                            if let url = document.localFileURL {
+                                GlassDetailCard(label: "File", value: url.lastPathComponent, icon: "paperclip", tint: Color(red: 0.3, green: 0.5, blue: 0.55))
+                                Button {
+                                    isReadingText = true
+                                    Task {
+                                        let text = await OCRService.extractText(fromFileAt: url)
+                                        await MainActor.run {
+                                            if !text.isEmpty { document.ocrText = text }
+                                            isReadingText = false
+                                        }
+                                    }
+                                } label: {
+                                    HStack(spacing: 8) {
+                                        if isReadingText { ProgressView().tint(.white) } else { Image(systemName: "text.viewfinder") }
+                                        Text(isReadingText ? "Reading text…" : "Read text from file again")
+                                            .font(.system(size: 14, weight: .medium))
+                                    }
+                                    .foregroundColor(.white)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 12)
+                                    .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color.white.opacity(0.05)))
+                                }
+                                .disabled(isReadingText)
                             }
 
                             VStack(alignment: .leading, spacing: 8) {
@@ -593,12 +726,18 @@ struct EditDocumentView: View {
                                 .pickerStyle(.menu)
                                 .foregroundColor(.white)
                             }
+                            .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(12)
                             .background(
                                 RoundedRectangle(cornerRadius: 16, style: .continuous)
                                     .fill(Color.white.opacity(0.03))
                                     .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Color.white.opacity(0.05), lineWidth: 0.5))
                             )
+
+                            AssetPickerField(selection: $document.asset)
+                            RoomPickerField(selection: $document.room)
+
+                            GlassTextField(title: "Text", text: $document.ocrText, icon: "text.viewfinder", tint: Color(red: 0.35, green: 0.3, blue: 0.65), isMultiline: true)
                         }
                         .padding(.horizontal, 24)
                         .padding(.bottom, 40)

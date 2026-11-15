@@ -118,7 +118,10 @@ struct MaintenanceListView: View {
                                 .buttonStyle(PlainButtonStyle())
                                 .contextMenu {
                                     Button(role: .destructive) {
-                                        withAnimation { modelContext.delete(maintenance) }
+                                        withAnimation {
+                                            NotificationService.shared.cancelMaintenanceReminder(for: maintenance)
+                                            modelContext.delete(maintenance)
+                                        }
                                     } label: {
                                         Label("Delete", systemImage: "trash")
                                     }
@@ -176,7 +179,7 @@ struct MaintenanceRow: View {
                     .font(.system(size: 13))
                     .foregroundColor(Color(red: 0.6, green: 0.55, blue: 0.7))
                 if maintenance.cost > 0 {
-                    Text(String(format: "$%.2f", maintenance.cost))
+                    Text(Money.format(maintenance.cost))
                         .font(.system(size: 12, weight: .medium))
                         .foregroundColor(.white.opacity(0.8))
                 }
@@ -251,7 +254,7 @@ struct MaintenanceDetailView: View {
                         GlassDetailCard(label: "Date", value: maintenance.date.formatted(.dateTime.day().month().year()), icon: "calendar", tint: Color(red: 0.25, green: 0.45, blue: 0.75))
 
                         if maintenance.cost > 0 {
-                            GlassDetailCard(label: "Cost", value: String(format: "$%.2f", maintenance.cost), icon: "dollarsign.circle.fill", tint: Color(red: 0.55, green: 0.4, blue: 0.25))
+                            GlassDetailCard(label: "Cost", value: Money.format(maintenance.cost), icon: Money.symbolName(filled: true), tint: Color(red: 0.55, green: 0.4, blue: 0.25))
                         }
 
                         if let asset = maintenance.asset {
@@ -281,7 +284,10 @@ struct MaintenanceDetailView: View {
                     .padding(.bottom, 40)
                 }
             }
-            .sheet(isPresented: $showingEditMaintenance) {
+            .sheet(isPresented: $showingEditMaintenance, onDismiss: {
+                // Edits apply live, so reschedule (or cancel) the reminder from the current values.
+                NotificationService.shared.syncMaintenanceReminder(for: maintenance)
+            }) {
                 EditMaintenanceView(maintenance: maintenance)
             }
         }
@@ -298,6 +304,7 @@ struct AddMaintenanceView: View {
     @State private var date = Date()
     @State private var cost = ""
     @State private var selectedAsset: Asset?
+    @State private var enableReminder = true
     @State private var notes = ""
     
     var body: some View {
@@ -336,7 +343,7 @@ struct AddMaintenanceView: View {
 
                         VStack(spacing: 16) {
                             GlassTextField(title: "Task", text: $task, icon: "wrench.and.screwdriver.fill", tint: Color(red: 0.3, green: 0.55, blue: 0.45))
-                            GlassTextField(title: "Cost", text: $cost, icon: "dollarsign.circle.fill", tint: Color(red: 0.55, green: 0.4, blue: 0.25), keyboardType: .decimalPad)
+                            GlassTextField(title: "Cost", text: $cost, icon: Money.symbolName(filled: true), tint: Color(red: 0.55, green: 0.4, blue: 0.25), keyboardType: .decimalPad)
                             GlassTextField(title: "Notes", text: $notes, icon: "note.text", tint: Color(red: 0.55, green: 0.35, blue: 0.35), isMultiline: true)
 
                             VStack(alignment: .leading, spacing: 8) {
@@ -347,6 +354,19 @@ struct AddMaintenanceView: View {
                                 DatePicker("", selection: $date, displayedComponents: .date)
                                     .datePickerStyle(.compact)
                                     .foregroundColor(.white)
+                            }
+                            .padding(12)
+                            .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color.white.opacity(0.03)).overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Color.white.opacity(0.05), lineWidth: 0.5)))
+
+                            Toggle(isOn: $enableReminder) {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Reminder")
+                                        .font(.system(size: 15))
+                                        .foregroundColor(.white)
+                                    Text("Up to a week before, at 9 AM")
+                                        .font(.system(size: 12))
+                                        .foregroundColor(.white.opacity(0.5))
+                                }
                             }
                             .padding(12)
                             .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color.white.opacity(0.03)).overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Color.white.opacity(0.05), lineWidth: 0.5)))
@@ -392,7 +412,7 @@ struct AddMaintenanceView: View {
     }
     
     private func saveMaintenance() {
-        let costValue = Double(cost) ?? 0.0
+        let costValue = Money.parse(cost) ?? 0.0
         let maintenance = Maintenance(task: task, date: date, cost: costValue, notes: notes)
         
         if let asset = selectedAsset {
@@ -400,7 +420,9 @@ struct AddMaintenanceView: View {
             maintenance.asset = asset
         }
         
+        maintenance.remindersEnabled = enableReminder
         modelContext.insert(maintenance)
+        NotificationService.shared.syncMaintenanceReminder(for: maintenance)
     }
 }
 
@@ -414,7 +436,7 @@ struct EditMaintenanceView: View {
     
     init(maintenance: Maintenance) {
         self.maintenance = maintenance
-        _costString = State(initialValue: String(format: "%.2f", maintenance.cost))
+        _costString = State(initialValue: Money.editString(maintenance.cost))
         _selectedAsset = State(initialValue: maintenance.asset)
     }
     
@@ -454,8 +476,8 @@ struct EditMaintenanceView: View {
 
                         VStack(spacing: 16) {
                             GlassTextField(title: "Task", text: $maintenance.task, icon: "wrench.and.screwdriver.fill", tint: Color(red: 0.3, green: 0.55, blue: 0.45))
-                            GlassTextField(title: "Cost", text: $costString, icon: "dollarsign.circle.fill", tint: Color(red: 0.55, green: 0.4, blue: 0.25), keyboardType: .decimalPad)
-                                .onChange(of: costString) { _, newValue in maintenance.cost = Double(newValue) ?? 0.0 }
+                            GlassTextField(title: "Cost", text: $costString, icon: Money.symbolName(filled: true), tint: Color(red: 0.55, green: 0.4, blue: 0.25), keyboardType: .decimalPad)
+                                .onChange(of: costString) { _, newValue in maintenance.cost = Money.parse(newValue) ?? 0.0 }
                             GlassTextField(title: "Notes", text: $maintenance.notes, icon: "note.text", tint: Color(red: 0.55, green: 0.35, blue: 0.35), isMultiline: true)
 
                             VStack(alignment: .leading, spacing: 8) {
@@ -466,6 +488,19 @@ struct EditMaintenanceView: View {
                                 DatePicker("", selection: $maintenance.date, displayedComponents: .date)
                                     .datePickerStyle(.compact)
                                     .foregroundColor(.white)
+                            }
+                            .padding(12)
+                            .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color.white.opacity(0.03)).overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Color.white.opacity(0.05), lineWidth: 0.5)))
+
+                            Toggle(isOn: $maintenance.remindersEnabled) {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Reminder")
+                                        .font(.system(size: 15))
+                                        .foregroundColor(.white)
+                                    Text("Up to a week before, at 9 AM")
+                                        .font(.system(size: 12))
+                                        .foregroundColor(.white.opacity(0.5))
+                                }
                             }
                             .padding(12)
                             .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color.white.opacity(0.03)).overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Color.white.opacity(0.05), lineWidth: 0.5)))

@@ -20,7 +20,8 @@ final class Asset {
     @Relationship(deleteRule: .nullify)
     var room: Room?
     
-    @Relationship(deleteRule: .cascade, inverse: \Document.asset)
+    // Documents are independent records in the Documents section, so deleting an asset unlinks them rather than deleting them.
+    @Relationship(deleteRule: .nullify, inverse: \Document.asset)
     var documents: [Document] = []
     
     @Relationship(deleteRule: .cascade, inverse: \Warranty.asset)
@@ -40,5 +41,11 @@ final class Asset {
         self.location = location
         self.notes = notes
         self.createdAt = Date()
+    }
+
+    /// Where the asset is: its linked room if it has one, otherwise the legacy free-text location.
+    var locationDisplay: String {
+        if let room { return room.name }
+        return location
     }
 }

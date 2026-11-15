@@ -13,6 +13,9 @@ final class Document {
     @Relationship(deleteRule: .nullify)
     var asset: Asset?
 
+    @Relationship(deleteRule: .nullify)
+    var room: Room?
+
     init(title: String, type: DocumentType, fileURL: String, ocrText: String = "") {
         self.title = title
         self.type = type
@@ -44,6 +47,16 @@ final class Document {
             }
         }
         return nil
+    }
+
+    /// Deletes the copy of the file this app stored in its own Documents folder.
+    /// Files outside the app's Documents folder are never touched.
+    func deleteStoredFile() {
+        guard let url = localFileURL,
+              let docsDir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else { return }
+        let docsPath = docsDir.standardizedFileURL.path
+        guard url.standardizedFileURL.path.hasPrefix(docsPath + "/") else { return }
+        try? FileManager.default.removeItem(at: url)
     }
 
     /// Returns the file extension if a file is attached

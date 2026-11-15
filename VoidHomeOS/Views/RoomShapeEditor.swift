@@ -12,7 +12,40 @@ struct RoomShapeEditor: View {
     @State private var selectedPart: RoomPart?
     @State private var showingAddPart = false
 
-    private let scale: CGFloat = 35
+    /// Where the piece being dragged started, in metres from the room centre.
+    @State private var dragStart: CGPoint?
+
+    /// Fits the whole shape on screen, never larger than the floor plan's 35 points per metre.
+    private func fittedScale(for size: CGSize) -> CGFloat {
+        let local = FloorplanGeometry.localRects(width: room.width, height: room.height, parts: room.parts)
+        let extentX = local.reduce(CGFloat(room.width / 2)) { max($0, abs($1.minX), abs($1.maxX)) }
+        let extentY = local.reduce(CGFloat(room.height / 2)) { max($0, abs($1.minY), abs($1.maxY)) }
+        let fit = min(size.width / (extentX * 2 + 2), size.height / (extentY * 2 + 2))
+        return max(8, min(FloorplanGeometry.pointsPerMetre, fit))
+    }
+
+    /// Snaps a piece's centre so its edges sit flush against, or line up with, the main room and the other pieces.
+    private func snappedCenter(for part: RoomPart, proposed: CGPoint) -> CGPoint {
+        let threshold: CGFloat = 0.3
+        let w = CGFloat(part.width), h = CGFloat(part.height)
+        var targets = [CGRect(x: -room.width / 2, y: -room.height / 2, width: room.width, height: room.height)]
+        for other in room.parts where other.id != part.id {
+            targets.append(CGRect(x: other.xOffset - other.width / 2, y: other.yOffset - other.height / 2, width: other.width, height: other.height))
+        }
+        func snap(_ value: CGFloat, half: CGFloat, edges: [(CGFloat, CGFloat)]) -> CGFloat {
+            var best: CGFloat?
+            for (lo, hi) in edges {
+                // flush outside, aligned edges, and centred
+                for candidate in [hi + half, lo - half, lo + half, hi - half, (lo + hi) / 2] {
+                    if abs(candidate - value) < threshold, abs(candidate - value) < abs((best ?? .infinity) - value) { best = candidate }
+                }
+            }
+            return best ?? (value * 10).rounded() / 10
+        }
+        let x = snap(proposed.x, half: w / 2, edges: targets.map { ($0.minX, $0.maxX) })
+        let y = snap(proposed.y, half: h / 2, edges: targets.map { ($0.minY, $0.maxY) })
+        return CGPoint(x: x, y: y)
+    }
 
     var body: some View {
         ZStack {
@@ -44,6 +77,8 @@ struct RoomShapeEditor: View {
                         // Grid
                         FloorplanGridLines().opacity(0.15)
 
+                        let scale = fittedScale(for: geo.size)
+
                         // Base room rectangle (centered in canvas)
                         let baseW = CGFloat(room.width) * scale
                         let baseH = CGFloat(room.height) * scale
@@ -55,7 +90,8 @@ struct RoomShapeEditor: View {
                             width: baseW,
                             height: baseH,
                             isBase: true,
-                            isSelected: false
+                            isSelected: false,
+                            scale: scale
                         )
                         .position(x: cx, y: cy)
 
@@ -71,18 +107,23 @@ struct RoomShapeEditor: View {
                                 width: pw,
                                 height: ph,
                                 isBase: false,
-                                isSelected: selectedPart?.id == part.id
+                                isSelected: selectedPart?.id == part.id,
+                                scale: scale
                             )
                             .position(x: px, y: py)
                             .gesture(
-                                DragGesture()
+                                DragGesture(coordinateSpace: .global)
                                     .onChanged { gesture in
                                         selectedPart = part
-                                        let newX = (gesture.location.x - cx) / scale
-                                        let newY = (gesture.location.y - cy) / scale
-                                        part.xOffset = Double(newX)
-                                        part.yOffset = Double(newY)
+                                        let start = dragStart ?? CGPoint(x: part.xOffset, y: part.yOffset)
+                                        if dragStart == nil { dragStart = start }
+                                        let proposed = CGPoint(x: start.x + gesture.translation.width / scale,
+                                                               y: start.y + gesture.translation.height / scale)
+                                        let snapped = snappedCenter(for: part, proposed: proposed)
+                                        part.xOffset = Double(snapped.x)
+                                        part.yOffset = Double(snapped.y)
                                     }
+                                    .onEnded { _ in dragStart = nil }
                             )
                             .onTapGesture { selectedPart = part }
                         }
@@ -171,6 +212,7 @@ struct RoomShapeRect: View {
     let height: CGFloat
     let isBase: Bool
     let isSelected: Bool
+    var scale: CGFloat = FloorplanGeometry.pointsPerMetre
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -181,7 +223,7 @@ struct RoomShapeRect: View {
                 .minimumScaleFactor(0.5)
             Spacer()
             if !isBase {
-                Text(String(format: "%.1fx%.1fm", width / 35, height / 35))
+                Text(String(format: "%.1fx%.1fm", width / scale, height / scale))
                     .font(.system(size: 8))
                     .foregroundColor(.white.opacity(0.6))
                     .minimumScaleFactor(0.5)

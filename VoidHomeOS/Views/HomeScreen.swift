@@ -125,11 +125,68 @@ struct HomeScreen: View {
     }
 }
 
+// MARK: - Edit Home View
+struct EditHomeView: View {
+    @Environment(\.dismiss) private var dismiss
+    @Bindable var home: Home
+
+    var body: some View {
+        ZStack {
+            StarryBackground()
+                .ignoresSafeArea()
+
+            NavigationStack {
+                ScrollView {
+                    VStack(spacing: 28) {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("VOID")
+                                .font(.system(size: 44, weight: .ultraLight, design: .default))
+                                .foregroundColor(.white)
+                                .tracking(6)
+                                .shadow(color: Color.purple.opacity(0.3), radius: 20, x: 0, y: 0)
+                            Text("EDIT HOME")
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundColor(Color(red: 0.55, green: 0.5, blue: 0.65))
+                                .tracking(3)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 24)
+                        .padding(.top, 50)
+
+                        VStack(spacing: 16) {
+                            GlassTextField(title: "Home Name", text: $home.name, icon: "house.fill", tint: Color(red: 0.35, green: 0.3, blue: 0.65))
+                            GlassTextField(title: "Address", text: $home.address, icon: "mappin.and.ellipse", tint: Color(red: 0.25, green: 0.45, blue: 0.75), isMultiline: true)
+                        }
+                        .padding(.horizontal, 24)
+                        .padding(.bottom, 40)
+                    }
+                }
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbarBackground(.hidden, for: .navigationBar)
+                .toolbar {
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        Button("Done") {
+                            if home.name.trimmingCharacters(in: .whitespaces).isEmpty { home.name = "My Home" }
+                            dismiss()
+                        }
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(Color(red: 0.35, green: 0.3, blue: 0.65))
+                    }
+                }
+            }
+        }
+        .onDisappear {
+            if home.name.trimmingCharacters(in: .whitespaces).isEmpty { home.name = "My Home" }
+        }
+    }
+}
+
 // MARK: - Home Detail View (Cosmic visual paradise redesign)
 struct HomeDetailView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
     @Query private var homes: [Home]
+    @State private var showingEditHome = false
     
     var body: some View {
         ZStack {
@@ -167,6 +224,16 @@ struct HomeDetailView: View {
                                 .foregroundColor(.white.opacity(0.8))
                             }
                             Spacer()
+                            Button(action: { showingEditHome = true }) {
+                                Image(systemName: "pencil")
+                                    .font(.system(size: 16, weight: .semibold))
+                                    .foregroundColor(.white)
+                                    .frame(width: 44, height: 44)
+                                    .background(Color.white.opacity(0.08))
+                                    .clipShape(Circle())
+                                    .overlay(Circle().stroke(Color.white.opacity(0.12), lineWidth: 0.5))
+                            }
+                            .accessibilityLabel("Edit home details")
                         }
                         .padding(.horizontal, 24)
                         .padding(.top, 20)
@@ -317,6 +384,11 @@ struct HomeDetailView: View {
             } else {
                 ContentUnavailableView("No home configured", systemImage: "house")
                     .foregroundColor(.white.opacity(0.6))
+            }
+        }
+        .sheet(isPresented: $showingEditHome) {
+            if let home = homes.first {
+                EditHomeView(home: home)
             }
         }
         .navigationBarTitleDisplayMode(.inline)

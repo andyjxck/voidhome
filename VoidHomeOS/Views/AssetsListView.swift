@@ -76,6 +76,7 @@ struct AssetsListView: View {
                             .contextMenu {
                                 Button(role: .destructive) {
                                     withAnimation {
+                                        NotificationService.shared.cancelReminders(forAssetBeingDeleted: asset)
                                         modelContext.delete(asset)
                                     }
                                 } label: {
@@ -127,6 +128,7 @@ struct AssetDetailView: View {
     @Environment(\.dismiss) private var dismiss
     @Bindable var asset: Asset
     @State private var showingEditAsset = false
+    @State private var showingAddDocument = false
     
     private func formatDate(_ date: Date) -> String {
         let formatter = DateFormatter()
@@ -197,6 +199,21 @@ struct AssetDetailView: View {
                     VStack(spacing: 16) {
                         GlassDetailCard(label: "Name", value: asset.name, icon: "textformat", tint: Color(red: 0.55, green: 0.3, blue: 0.6))
                         GlassDetailCard(label: "Category", value: asset.category, icon: "cube.fill", tint: Color(red: 0.25, green: 0.45, blue: 0.75))
+
+                        if !asset.manufacturer.isEmpty {
+                            GlassDetailCard(label: "Manufacturer", value: asset.manufacturer, icon: "building.2.fill", tint: Color(red: 0.4, green: 0.4, blue: 0.7))
+                        }
+
+                        if !asset.model.isEmpty {
+                            GlassDetailCard(label: "Model", value: asset.model, icon: "tag.fill", tint: Color(red: 0.45, green: 0.35, blue: 0.6))
+                        }
+
+                        if let room = asset.room {
+                            NavigationLink(destination: RoomDetailView(room: room)) {
+                                GlassDetailCard(label: "Room", value: "\(room.name) · \(room.floorDisplay)", icon: "square.split.bottomrightquarter", tint: Color(red: 0.25, green: 0.45, blue: 0.75))
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                        }
                         
                         if !asset.serialNumber.isEmpty {
                             GlassDetailCard(label: "Serial Number", value: asset.serialNumber, icon: "number", tint: Color(red: 0.2, green: 0.55, blue: 0.7))
@@ -208,11 +225,11 @@ struct AssetDetailView: View {
 
                         
                         if asset.purchasePrice > 0 {
-                            GlassDetailCard(label: "Purchase Price", value: String(format: "$%.2f", asset.purchasePrice), icon: "dollarsign.circle", tint: Color(red: 0.3, green: 0.5, blue: 0.55))
+                            GlassDetailCard(label: "Purchase Price", value: Money.format(asset.purchasePrice), icon: Money.symbolName(filled: false), tint: Color(red: 0.3, green: 0.5, blue: 0.55))
                         }
                         
                         if !asset.location.isEmpty {
-                            GlassDetailCard(label: "Location", value: asset.location, icon: "location.fill", tint: Color(red: 0.5, green: 0.35, blue: 0.65))
+                            GlassDetailCard(label: asset.room == nil ? "Location" : "Spot in Room", value: asset.location, icon: "location.fill", tint: Color(red: 0.5, green: 0.35, blue: 0.65))
                         }
                         
                         if !asset.notes.isEmpty {
@@ -272,14 +289,142 @@ struct AssetDetailView: View {
                         }
                     }
                     .padding(.top, 20)
+
+                    // Documents section
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack {
+                            Text("DOCUMENTS (\(asset.documents.count))")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundColor(Color(red: 0.5, green: 0.45, blue: 0.6))
+                                .tracking(2)
+                            Spacer()
+                            Button(action: { showingAddDocument = true }) {
+                                Label("Add", systemImage: "plus")
+                                    .font(.system(size: 13, weight: .medium))
+                                    .foregroundColor(.white.opacity(0.85))
+                            }
+                        }
+                        .padding(.horizontal, 24)
+
+                        if asset.documents.isEmpty {
+                            Text("No documents linked. Add a manual, receipt or invoice.")
+                                .font(.system(size: 14))
+                                .foregroundColor(Color(red: 0.5, green: 0.45, blue: 0.6))
+                                .padding(.horizontal, 24)
+                        } else {
+                            VStack(spacing: 12) {
+                                ForEach(asset.documents.sorted { $0.createdAt > $1.createdAt }) { document in
+                                    NavigationLink(destination: DocumentDetailView(document: document)) {
+                                        DocumentRow(document: document)
+                                    }
+                                    .buttonStyle(PlainButtonStyle())
+                                }
+                            }
+                            .padding(.horizontal, 24)
+                        }
+                    }
+                    .padding(.top, 20)
+
+                    // Maintenance section
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("MAINTENANCE (\(asset.maintenanceRecords.count))")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(Color(red: 0.5, green: 0.45, blue: 0.6))
+                            .tracking(2)
+                            .padding(.horizontal, 24)
+
+                        if asset.maintenanceRecords.isEmpty {
+                            Text("No maintenance logged for this asset")
+                                .font(.system(size: 14))
+                                .foregroundColor(Color(red: 0.5, green: 0.45, blue: 0.6))
+                                .padding(.horizontal, 24)
+                        } else {
+                            VStack(spacing: 12) {
+                                ForEach(asset.maintenanceRecords.sorted { $0.date > $1.date }) { record in
+                                    NavigationLink(destination: MaintenanceDetailView(maintenance: record)) {
+                                        MaintenanceRow(maintenance: record)
+                                    }
+                                    .buttonStyle(PlainButtonStyle())
+                                }
+                            }
+                            .padding(.horizontal, 24)
+                        }
+                    }
+                    .padding(.top, 20)
                     .padding(.bottom, 40)
                 }
             }
             .sheet(isPresented: $showingEditAsset) {
                 EditAssetView(asset: asset)
             }
+            .sheet(isPresented: $showingAddDocument) {
+                AddDocumentView(initialAsset: asset)
+            }
         }
         .navigationBarHidden(true)
+    }
+}
+
+// MARK: - Asset form fields (shared by Add and Edit)
+private struct AssetFormFields: View {
+    @Binding var name: String
+    @Binding var category: String
+    @Binding var manufacturer: String
+    @Binding var model: String
+    @Binding var serialNumber: String
+    @Binding var purchaseDate: Date?
+    @Binding var priceText: String
+    @Binding var room: Room?
+    @Binding var location: String
+    @Binding var notes: String
+
+    var body: some View {
+        VStack(spacing: 16) {
+            GlassTextField(title: "Name", text: $name, icon: "textformat", tint: Color(red: 0.55, green: 0.3, blue: 0.6))
+            GlassTextField(title: "Category", text: $category, icon: "cube.fill", tint: Color(red: 0.25, green: 0.45, blue: 0.75))
+            GlassTextField(title: "Manufacturer", text: $manufacturer, icon: "building.2.fill", tint: Color(red: 0.4, green: 0.4, blue: 0.7))
+            GlassTextField(title: "Model", text: $model, icon: "tag.fill", tint: Color(red: 0.45, green: 0.35, blue: 0.6))
+            GlassTextField(title: "Serial Number", text: $serialNumber, icon: "number", tint: Color(red: 0.2, green: 0.55, blue: 0.7))
+
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text("PURCHASE DATE")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(Color(red: 0.5, green: 0.45, blue: 0.6))
+                        .tracking(1.5)
+                    Spacer()
+                    if purchaseDate != nil {
+                        Button("Clear") { purchaseDate = nil }
+                            .font(.system(size: 12))
+                            .foregroundColor(.white.opacity(0.6))
+                    }
+                }
+                if purchaseDate == nil {
+                    Button("Add purchase date") { purchaseDate = Date() }
+                        .font(.system(size: 15))
+                        .foregroundColor(.white.opacity(0.85))
+                } else {
+                    DatePicker("", selection: Binding(get: { purchaseDate ?? Date() }, set: { purchaseDate = $0 }), displayedComponents: .date)
+                        .datePickerStyle(.compact)
+                        .labelsHidden()
+                        .foregroundColor(.white)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(12)
+            .background(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(Color.white.opacity(0.03))
+                    .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Color.white.opacity(0.05), lineWidth: 0.5))
+            )
+
+            GlassTextField(title: "Purchase Price", text: $priceText, icon: Money.symbolName(filled: false), tint: Color(red: 0.3, green: 0.5, blue: 0.55), keyboardType: .decimalPad)
+
+            RoomPickerField(selection: $room)
+
+            GlassTextField(title: room == nil ? "Location" : "Spot in room (optional)", text: $location, icon: "location.fill", tint: Color(red: 0.5, green: 0.35, blue: 0.65))
+            GlassTextField(title: "Notes", text: $notes, icon: "note.text", tint: Color(red: 0.65, green: 0.4, blue: 0.35), isMultiline: true)
+        }
     }
 }
 
@@ -288,50 +433,36 @@ struct AddAssetView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
     @Query private var homes: [Home]
-    
+
     @State private var name = ""
     @State private var category = ""
+    @State private var manufacturer = ""
+    @State private var model = ""
     @State private var serialNumber = ""
     @State private var purchaseDate: Date?
-    @State private var purchasePrice: Double = 0.0
+    @State private var priceText = ""
+    @State private var room: Room?
     @State private var location = ""
     @State private var notes = ""
-    @State private var showingScanner = false
-    @State private var scannedResult: String?
-    private var safePurchaseDateBinding: Binding<Date> {
-        Binding(
-            get: { purchaseDate ?? Date() },
-            set: { purchaseDate = $0 }
-        )
+
+    init(initialRoom: Room? = nil) {
+        _room = State(initialValue: initialRoom)
     }
 
     var body: some View {
         ZStack {
-            // Unique starry background for AddAssetView
-            StarryBackground(
-                stars: (0..<120).map { _ in
-                    Star(
-                        x: CGFloat.random(in: 0...1),
-                        y: CGFloat.random(in: 0...1),
-                        size: CGFloat.random(in: 1...3),
-                        opacity: Double.random(in: 0.15...0.6),
-                        color: [Color(red: 0.9, green: 0.9, blue: 1.0), Color(red: 1.0, green: 0.95, blue: 0.85)].randomElement()!
-                    )
-                }
-            )
-            .ignoresSafeArea()
-            
+            StarryBackground()
+                .ignoresSafeArea()
+
             NavigationStack {
                 ScrollView {
                     VStack(spacing: 28) {
-                        // Header
                         VStack(alignment: .leading, spacing: 10) {
                             Text("VOID")
                                 .font(.system(size: 44, weight: .ultraLight, design: .default))
                                 .foregroundColor(.white)
                                 .tracking(6)
                                 .shadow(color: Color.purple.opacity(0.3), radius: 20, x: 0, y: 0)
-                            
                             Text("ADD ASSET")
                                 .font(.system(size: 13, weight: .medium))
                                 .foregroundColor(Color(red: 0.55, green: 0.5, blue: 0.65))
@@ -340,44 +471,12 @@ struct AddAssetView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, 24)
                         .padding(.top, 50)
-                        
-                        // Form fields with glassmorphic styling
-                        VStack(spacing: 16) {
-                            GlassTextField(title: "Name", text: $name, icon: "textformat", tint: Color(red: 0.55, green: 0.3, blue: 0.6))
-                            GlassTextField(title: "Category", text: $category, icon: "cube.fill", tint: Color(red: 0.25, green: 0.45, blue: 0.75))
-                            GlassTextField(title: "Serial Number", text: $serialNumber, icon: "number", tint: Color(red: 0.2, green: 0.55, blue: 0.7))
-                            
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text("PURCHASE DATE")
-                                    .font(.system(size: 11, weight: .semibold))
-                                    .foregroundColor(Color(red: 0.5, green: 0.45, blue: 0.6))
-                                    .tracking(1.5)
-                                
-                                DatePicker("", selection: safePurchaseDateBinding, displayedComponents: .date)
-                                    .datePickerStyle(.compact)
-                                    .foregroundColor(.white)
-                            }
-                            .padding(12)
-                            .background(
-                                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                    .fill(Color.white.opacity(0.03))
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                            .stroke(Color.white.opacity(0.05), lineWidth: 0.5)
-                                    )
-                            )
 
-                            
-                            GlassTextField(title: "Purchase Price", text: Binding(
-                                get: { String(format: "%.2f", purchasePrice) },
-                                set: { purchasePrice = Double($0) ?? 0.0 }
-                            ), icon: "dollarsign.circle", tint: Color(red: 0.3, green: 0.5, blue: 0.55), keyboardType: .decimalPad)
-                            
-                            GlassTextField(title: "Location", text: $location, icon: "location.fill", tint: Color(red: 0.5, green: 0.35, blue: 0.65))
-                            GlassTextField(title: "Notes", text: $notes, icon: "note.text", tint: Color(red: 0.65, green: 0.4, blue: 0.35), isMultiline: true)
-                        }
-                        .padding(.horizontal, 24)
-                        .padding(.bottom, 40)
+                        AssetFormFields(name: $name, category: $category, manufacturer: $manufacturer, model: $model,
+                                        serialNumber: $serialNumber, purchaseDate: $purchaseDate, priceText: $priceText,
+                                        room: $room, location: $location, notes: $notes)
+                            .padding(.horizontal, 24)
+                            .padding(.bottom, 40)
                     }
                 }
                 .navigationBarTitleDisplayMode(.inline)
@@ -401,21 +500,24 @@ struct AddAssetView: View {
             }
         }
     }
-    
+
     private func saveAsset() {
         let asset = Asset(
             name: name,
             category: category,
+            manufacturer: manufacturer,
+            model: model,
             serialNumber: serialNumber,
             purchaseDate: purchaseDate,
-            purchasePrice: purchasePrice,
+            purchasePrice: Money.parse(priceText) ?? 0,
             location: location,
             notes: notes
         )
+        modelContext.insert(asset)
+        asset.room = room
         if let home = homes.first {
             home.assets.append(asset)
         }
-        modelContext.insert(asset)
     }
 }
 
@@ -423,40 +525,27 @@ struct AddAssetView: View {
 struct EditAssetView: View {
     @Environment(\.dismiss) private var dismiss
     @Bindable var asset: Asset
-    
-    private func formatDate(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.dateStyle = .medium
-        return formatter.string(from: date)
+    @State private var priceText: String
+
+    init(asset: Asset) {
+        self.asset = asset
+        _priceText = State(initialValue: Money.editString(asset.purchasePrice))
     }
-       
+
     var body: some View {
         ZStack {
-            // Unique starry background for EditAssetView
-            StarryBackground(
-                stars: (0..<120).map { _ in
-                    Star(
-                        x: CGFloat.random(in: 0...1),
-                        y: CGFloat.random(in: 0...1),
-                        size: CGFloat.random(in: 1...3),
-                        opacity: Double.random(in: 0.15...0.6),
-                        color: [Color(red: 1.0, green: 0.95, blue: 0.85), Color(red: 0.9, green: 0.8, blue: 1.0)].randomElement()!
-                    )
-                }
-            )
-            .ignoresSafeArea()
-            
+            StarryBackground()
+                .ignoresSafeArea()
+
             NavigationStack {
                 ScrollView {
                     VStack(spacing: 28) {
-                        // Header
                         VStack(alignment: .leading, spacing: 10) {
                             Text("VOID")
                                 .font(.system(size: 44, weight: .ultraLight, design: .default))
                                 .foregroundColor(.white)
                                 .tracking(6)
                                 .shadow(color: Color.purple.opacity(0.3), radius: 20, x: 0, y: 0)
-                            
                             Text("EDIT ASSET")
                                 .font(.system(size: 13, weight: .medium))
                                 .foregroundColor(Color(red: 0.55, green: 0.5, blue: 0.65))
@@ -465,43 +554,12 @@ struct EditAssetView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, 24)
                         .padding(.top, 50)
-                        
-                        // Form fields with glassmorphic styling
-                        VStack(spacing: 16) {
-                            GlassTextField(title: "Name", text: $asset.name, icon: "textformat", tint: Color(red: 0.55, green: 0.3, blue: 0.6))
-                            GlassTextField(title: "Category", text: $asset.category, icon: "cube.fill", tint: Color(red: 0.25, green: 0.45, blue: 0.75))
-                            GlassTextField(title: "Serial Number", text: $asset.serialNumber, icon: "number", tint: Color(red: 0.2, green: 0.55, blue: 0.7))
-                            
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text("PURCHASE DATE")
-                                    .font(.system(size: 11, weight: .semibold))
-                                    .foregroundColor(Color(red: 0.5, green: 0.45, blue: 0.6))
-                                    .tracking(1.5)
-                                
-                                DatePicker("", selection: Binding(get: { asset.purchaseDate ?? Date() }, set: { asset.purchaseDate = $0 }), displayedComponents: .date)
-                                    .datePickerStyle(.compact)
-                                    .foregroundColor(.white)
-                            }
-                            .padding(12)
-                            .background(
-                                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                    .fill(Color.white.opacity(0.03))
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                            .stroke(Color.white.opacity(0.05), lineWidth: 0.5)
-                                    )
-                            )
-                            
-                            GlassTextField(title: "Purchase Price", text: Binding(
-                                get: { String(format: "%.2f", asset.purchasePrice) },
-                                set: { asset.purchasePrice = Double($0) ?? 0.0 }
-                            ), icon: "dollarsign.circle", tint: Color(red: 0.3, green: 0.5, blue: 0.55), keyboardType: .decimalPad)
-                            
-                            GlassTextField(title: "Location", text: $asset.location, icon: "location.fill", tint: Color(red: 0.5, green: 0.35, blue: 0.65))
-                            GlassTextField(title: "Notes", text: $asset.notes, icon: "note.text", tint: Color(red: 0.65, green: 0.4, blue: 0.35), isMultiline: true)
-                        }
-                        .padding(.horizontal, 24)
-                        .padding(.bottom, 40)
+
+                        AssetFormFields(name: $asset.name, category: $asset.category, manufacturer: $asset.manufacturer, model: $asset.model,
+                                        serialNumber: $asset.serialNumber, purchaseDate: $asset.purchaseDate, priceText: $priceText,
+                                        room: $asset.room, location: $asset.location, notes: $asset.notes)
+                            .padding(.horizontal, 24)
+                            .padding(.bottom, 40)
                     }
                 }
                 .navigationBarTitleDisplayMode(.inline)
@@ -513,12 +571,16 @@ struct EditAssetView: View {
                             .foregroundColor(.white.opacity(0.8))
                     }
                     ToolbarItem(placement: .navigationBarTrailing) {
-                        Button("Save") { dismiss() }
+                        Button("Done") { dismiss() }
                             .font(.system(size: 16, weight: .semibold))
                             .foregroundColor(Color(red: 0.55, green: 0.3, blue: 0.6))
                     }
                 }
             }
         }
+        .onChange(of: priceText) { _, newValue in
+            asset.purchasePrice = Money.parse(newValue) ?? 0
+        }
     }
 }
+

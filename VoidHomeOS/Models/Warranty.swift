@@ -8,6 +8,10 @@ final class Warranty {
     var expiryDate: Date
     var notes: String
     var createdAt: Date
+    /// Stable id for the local reminder; assigned when a reminder is first scheduled.
+    var reminderID: String?
+    /// Whether an expiry reminder should be scheduled.
+    var remindersEnabled: Bool = true
     
     @Relationship(deleteRule: .nullify)
     var asset: Asset?

@@ -17,6 +17,10 @@ final class Door {
     @Relationship(deleteRule: .nullify)
     var room: Room?
 
+    /// The extra shape piece this door sits on. Nil means the room's main rectangle.
+    @Relationship(deleteRule: .nullify)
+    var part: RoomPart?
+
     init(edge: DoorEdge = .bottom, position: Double = 0.5, opensLeft: Bool = true, opensInward: Bool = true, isDoubleDoor: Bool = false) {
         self.edge = edge
         self.position = position
