@@ -1,0 +1,53 @@
+name: iOS build check
+
+on:
+  push:
+    branches: [wire-up-everything]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select newest Xcode
+        run: |
+          XCODE=$(ls -d /Applications/Xcode*.app | sort -V | tail -1)
+          echo "Using $XCODE"
+          sudo xcode-select -s "$XCODE"
+          xcodebuild -version
+
+      - name: Build for iOS Simulator (no signing)
+        run: |
+          set -o pipefail
+          xcodebuild -project VoidHomeOS.xcodeproj -target VoidHomeOS \
+            -sdk iphonesimulator -configuration Debug \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
+            build 2>&1 | tee build.log
+
+      - name: Report compiler errors
+        if: failure()
+        run: |
+          grep -E "^/.*: error: " build.log | sed -E "s#^.*/VoidHomeOS/#VoidHomeOS/#" | sort -u > errors.txt || true
+          echo "Error count: $(wc -l < errors.txt)"
+          cat errors.txt
+          if [ ! -s errors.txt ]; then
+            tail -40 build.log | tr '\n' ' ' | sed 's/%/%25/g' | awk '{print "::error title=Build log tail::" $0}'
+          fi
+          split -l 40 errors.txt chunk_ || true
+          n=0
+          for f in chunk_*; do
+            [ -f "$f" ] || continue
+            n=$((n+1)); [ $n -gt 9 ] && break
+            msg=$(sed 's/%/%25/g' "$f" | awk '{printf "%s%%0A", $0}')
+            echo "::error title=Compiler errors part $n::$msg"
+          done
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: build.log
