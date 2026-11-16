@@ -39,8 +39,7 @@ struct DocumentsListView: View {
     private var filtered: [Document] {
         documents.filter { doc in
             (openFolder == nil || doc.type == openFolder) &&
-            (searchText.isEmpty || doc.title.localizedCaseInsensitiveContains(searchText) || doc.notes.localizedCaseInsensitiveContains(searchText) ||
-             (doc.ocrText ?? "").localizedCaseInsensitiveContains(searchText) || (doc.vendor ?? "").localizedCaseInsensitiveContains(searchText))
+            (searchText.isEmpty || doc.title.localizedCaseInsensitiveContains(searchText) || doc.ocrText.localizedCaseInsensitiveContains(searchText))
         }
     }
 
@@ -102,7 +101,7 @@ struct DocumentsListView: View {
 
     private func deleteDocument(_ doc: Document) {
         NotificationService.shared.cancelDocumentExpiryReminder(for: doc)
-        if let url = doc.localFileURL { try? FileManager.default.removeItem(at: url) }
+        doc.deleteStoredFile()
         modelContext.delete(doc)
     }
 }
@@ -143,7 +142,7 @@ struct DocumentThumbnail: View {
                     Image(systemName: document.type.icon).font(.system(size: 28, weight: .light)).foregroundColor(.white.opacity(0.8))
                 }
             }
-            .task(id: document.fileName) { await load(size: geo.size) }
+            .task(id: document.fileURL) { await load(size: geo.size) }
         }
     }
 
@@ -162,7 +161,8 @@ struct DocumentCard: View {
 
     /// A short piece of the scanned text around the search words.
     private var snippet: String? {
-        guard !highlight.isEmpty, let text = document.ocrText, let range = text.range(of: highlight, options: .caseInsensitive) else { return nil }
+        let text = document.ocrText
+        guard !highlight.isEmpty, let range = text.range(of: highlight, options: .caseInsensitive) else { return nil }
         let start = text.index(range.lowerBound, offsetBy: -30, limitedBy: text.startIndex) ?? text.startIndex
         let end = text.index(range.upperBound, offsetBy: 40, limitedBy: text.endIndex) ?? text.endIndex
         return (start > text.startIndex ? "…" : "") + text[start..<end].replacingOccurrences(of: "\n", with: " ") + (end < text.endIndex ? "…" : "")
@@ -250,12 +250,9 @@ struct DocumentDetailView: View {
                 }
 
                 VStack(spacing: 10) {
-                    if let vendor = document.vendor, !vendor.isEmpty { GlassDetailCard(label: "FROM", value: vendor, icon: "building.2", tint: VoidPalette.documents) }
-                    if let amount = document.amount { GlassDetailCard(label: "AMOUNT", value: Money.format(amount), icon: Money.symbolName(filled: true), tint: VoidPalette.bills) }
                     if let expiry = document.expiryDate {
                         GlassDetailCard(label: expiry < Date() ? "EXPIRED" : "EXPIRES", value: DayText.short(expiry), icon: "calendar.badge.clock", tint: VoidPalette.amber)
                     }
-                    if !document.notes.isEmpty { GlassDetailCard(label: "NOTES", value: document.notes, icon: "note.text", tint: VoidPalette.muted) }
                 }
 
                 let linkCount = [document.asset == nil, document.room == nil, document.warranty == nil, document.bill == nil, document.project == nil, document.maintenance == nil].filter { !$0 }.count
@@ -280,7 +277,8 @@ struct DocumentDetailView: View {
                     }
                 }
 
-                if let text = document.ocrText, !text.isEmpty {
+                let text = document.ocrText
+                if !text.isEmpty {
                     VStack(alignment: .leading, spacing: 8) {
                         Button(action: { withAnimation { showText.toggle() } }) {
                             HStack {
@@ -307,7 +305,7 @@ struct DocumentDetailView: View {
         .confirmationDialog("Delete this document and its file?", isPresented: $confirmDelete, titleVisibility: .visible) {
             Button("Delete", role: .destructive) {
                 NotificationService.shared.cancelDocumentExpiryReminder(for: document)
-                if let url = document.localFileURL { try? FileManager.default.removeItem(at: url) }
+                document.deleteStoredFile()
                 modelContext.delete(document)
                 dismiss()
             }
