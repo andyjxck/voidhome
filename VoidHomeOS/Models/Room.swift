@@ -29,6 +29,16 @@ final class Room {
     @Relationship(deleteRule: .nullify, inverse: \Document.room)
     var documents: [Document] = []
 
+    @Relationship(deleteRule: .nullify)
+    var projects: [Project] = []
+    @Relationship(deleteRule: .nullify, inverse: \Maintenance.room)
+    var maintenanceRecords: [Maintenance] = []
+    @Relationship(deleteRule: .nullify, inverse: \MaintenancePlan.room)
+    var maintenancePlans: [MaintenancePlan] = []
+
+    /// Floor area in square metres, including extra parts.
+    var area: Double { FloorplanGeometry.unionArea(FloorplanGeometry.localRects(width: width, height: height, parts: parts)) }
+
     @Relationship(deleteRule: .cascade, inverse: \RoomPart.room)
     var parts: [RoomPart] = []
 
@@ -79,6 +89,31 @@ final class Room {
 /// Geometry for the floor plan, in metres. Room rotation is applied in 90° steps around the room's
 /// centre, so every piece stays an axis-aligned rectangle and overlap and snapping are exact.
 enum FloorplanGeometry {
+    /// Area covered by a set of rectangles, counting overlaps once.
+    static func unionArea(_ rects: [CGRect]) -> Double {
+        let xs = Array(Set(rects.flatMap { [$0.minX, $0.maxX] })).sorted()
+        var total: CGFloat = 0
+        guard xs.count > 1 else { return 0 }
+        for i in 0..<(xs.count - 1) {
+            let x0 = xs[i], x1 = xs[i + 1]
+            let spans = rects.filter { $0.minX <= x0 && $0.maxX >= x1 }
+                .map { ($0.minY, $0.maxY) }.sorted { $0.0 < $1.0 }
+            var covered: CGFloat = 0
+            var current: (CGFloat, CGFloat)?
+            for span in spans {
+                if let c = current, span.0 <= c.1 {
+                    current = (c.0, max(c.1, span.1))
+                } else {
+                    if let c = current { covered += c.1 - c.0 }
+                    current = span
+                }
+            }
+            if let c = current { covered += c.1 - c.0 }
+            total += covered * (x1 - x0)
+        }
+        return Double(total)
+    }
+
     /// Points per metre at 1x zoom. Room sizes and positions both use it, so the plan is the same on every screen.
     static let pointsPerMetre: CGFloat = 35
 

@@ -9,6 +9,17 @@ final class Document {
     var fileURL: String
     var ocrText: String
     var createdAt: Date
+    /// Optional expiry, e.g. a gas safety certificate. Shows on To-Do 30 days before and on the day.
+    var expiryDate: Date?
+    var expiryReminderID: String?
+    @Relationship(deleteRule: .nullify)
+    var warranty: Warranty?
+    @Relationship(deleteRule: .nullify)
+    var bill: Bill?
+    @Relationship(deleteRule: .nullify)
+    var project: Project?
+    @Relationship(deleteRule: .nullify)
+    var maintenance: Maintenance?
 
     @Relationship(deleteRule: .nullify)
     var asset: Asset?

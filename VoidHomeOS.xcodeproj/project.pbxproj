@@ -37,6 +37,13 @@
 		RoomPartSwiftFile /* RoomPart.swift in Sources */ = {isa = PBXBuildFile; fileRef = RoomPartSwiftRef /* RoomPart.swift */; };
 		RoomShapeEditorSwiftFile /* RoomShapeEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = RoomShapeEditorSwiftRef /* RoomShapeEditor.swift */; };
 		DoorSwiftFile /* Door.swift in Sources */ = {isa = PBXBuildFile; fileRef = DoorSwiftRef /* Door.swift */; };
+		HomeTaskSwiftFile /* HomeTask.swift in Sources */ = {isa = PBXBuildFile; fileRef = HomeTaskSwiftRef /* HomeTask.swift */; };
+		BillSwiftFile /* Bill.swift in Sources */ = {isa = PBXBuildFile; fileRef = BillSwiftRef /* Bill.swift */; };
+		MaintenancePlanSwiftFile /* MaintenancePlan.swift in Sources */ = {isa = PBXBuildFile; fileRef = MaintenancePlanSwiftRef /* MaintenancePlan.swift */; };
+		TodoFeedSwiftFile /* TodoFeed.swift in Sources */ = {isa = PBXBuildFile; fileRef = TodoFeedSwiftRef /* TodoFeed.swift */; };
+		VoidUISwiftFile /* VoidUI.swift in Sources */ = {isa = PBXBuildFile; fileRef = VoidUISwiftRef /* VoidUI.swift */; };
+		TodoViewSwiftFile /* TodoView.swift in Sources */ = {isa = PBXBuildFile; fileRef = TodoViewSwiftRef /* TodoView.swift */; };
+		BillsViewSwiftFile /* BillsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BillsViewSwiftRef /* BillsView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -72,6 +79,13 @@
 		RoomPartSwiftRef /* RoomPart.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoidHomeOS/Models/RoomPart.swift; sourceTree = "<group>"; };
 		RoomShapeEditorSwiftRef /* RoomShapeEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoidHomeOS/Views/RoomShapeEditor.swift; sourceTree = "<group>"; };
 		DoorSwiftRef /* Door.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoidHomeOS/Models/Door.swift; sourceTree = "<group>"; };
+		HomeTaskSwiftRef /* HomeTask.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoidHomeOS/Models/HomeTask.swift; sourceTree = "<group>"; };
+		BillSwiftRef /* Bill.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoidHomeOS/Models/Bill.swift; sourceTree = "<group>"; };
+		MaintenancePlanSwiftRef /* MaintenancePlan.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoidHomeOS/Models/MaintenancePlan.swift; sourceTree = "<group>"; };
+		TodoFeedSwiftRef /* TodoFeed.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoidHomeOS/Services/TodoFeed.swift; sourceTree = "<group>"; };
+		VoidUISwiftRef /* VoidUI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoidHomeOS/Views/VoidUI.swift; sourceTree = "<group>"; };
+		TodoViewSwiftRef /* TodoView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoidHomeOS/Views/TodoView.swift; sourceTree = "<group>"; };
+		BillsViewSwiftRef /* BillsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoidHomeOS/Views/BillsView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -146,6 +160,13 @@
 				PeopleListViewSwiftRef /* PeopleListView.swift */,
 				ProjectsListViewSwiftRef /* ProjectsListView.swift */,
 				TimelineViewSwiftRef /* TimelineView.swift */,
+				BillsViewSwiftRef /* BillsView.swift */,
+				TodoViewSwiftRef /* TodoView.swift */,
+				VoidUISwiftRef /* VoidUI.swift */,
+				TodoFeedSwiftRef /* TodoFeed.swift */,
+				MaintenancePlanSwiftRef /* MaintenancePlan.swift */,
+				BillSwiftRef /* Bill.swift */,
+				HomeTaskSwiftRef /* HomeTask.swift */,
 				SearchViewSwiftRef /* SearchView.swift */,
 				SharedViewsSwiftRef /* SharedViews.swift */,
 				RoomShapeEditorSwiftRef /* RoomShapeEditor.swift */,
@@ -240,6 +261,13 @@
 				PeopleListViewSwiftFile /* PeopleListView.swift in Sources */,
 				ProjectsListViewSwiftFile /* ProjectsListView.swift in Sources */,
 				TimelineViewSwiftFile /* TimelineView.swift in Sources */,
+				BillsViewSwiftFile /* BillsView.swift in Sources */,
+				TodoViewSwiftFile /* TodoView.swift in Sources */,
+				VoidUISwiftFile /* VoidUI.swift in Sources */,
+				TodoFeedSwiftFile /* TodoFeed.swift in Sources */,
+				MaintenancePlanSwiftFile /* MaintenancePlan.swift in Sources */,
+				BillSwiftFile /* Bill.swift in Sources */,
+				HomeTaskSwiftFile /* HomeTask.swift in Sources */,
 				SearchViewSwiftFile /* SearchView.swift in Sources */,
 				DocumentScannerServiceSwiftFile /* DocumentScannerService.swift in Sources */,
 				OCRServiceSwiftFile /* OCRService.swift in Sources */,

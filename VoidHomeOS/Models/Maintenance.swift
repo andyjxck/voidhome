@@ -15,6 +15,16 @@ final class Maintenance {
     
     @Relationship(deleteRule: .nullify)
     var asset: Asset?
+    @Relationship(deleteRule: .nullify)
+    var room: Room?
+    @Relationship(deleteRule: .nullify)
+    var person: Person?
+    @Relationship(deleteRule: .nullify)
+    var plan: MaintenancePlan?
+    @Relationship(deleteRule: .nullify, inverse: \Document.maintenance)
+    var documents: [Document] = []
+
+    var targetName: String? { asset?.name ?? room?.name }
     
     init(task: String, date: Date, cost: Double = 0.0, notes: String = "") {
         self.task = task

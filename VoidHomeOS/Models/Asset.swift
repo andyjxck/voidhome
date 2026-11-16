@@ -13,6 +13,8 @@ final class Asset {
     var location: String
     var notes: String
     var createdAt: Date
+    /// File name of the asset's photo in the app's Photos folder.
+    var photoFileName: String?
     
     @Relationship(deleteRule: .nullify)
     var home: Home?
@@ -27,6 +29,11 @@ final class Asset {
     @Relationship(deleteRule: .cascade, inverse: \Warranty.asset)
     var warranties: [Warranty] = []
     
+    @Relationship(deleteRule: .nullify, inverse: \MaintenancePlan.asset)
+    var maintenancePlans: [MaintenancePlan] = []
+    @Relationship(deleteRule: .nullify)
+    var projects: [Project] = []
+
     @Relationship(deleteRule: .cascade, inverse: \Maintenance.asset)
     var maintenanceRecords: [Maintenance] = []
     
