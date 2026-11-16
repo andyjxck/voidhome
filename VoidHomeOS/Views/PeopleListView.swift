@@ -1,162 +1,48 @@
 import SwiftUI
 import SwiftData
 
+/// Household members, tradespeople and providers, each with everything they're linked to.
 struct PeopleListView: View {
     @Environment(\.modelContext) private var modelContext
-    @Environment(\.dismiss) private var dismiss
     @Query(sort: \Person.name) private var people: [Person]
     @State private var showingAddPerson = false
     @State private var searchText = ""
-    
-    var filteredPeople: [Person] {
-        if searchText.isEmpty {
-            return people
-        }
-        return people.filter { person in
-            person.name.localizedCaseInsensitiveContains(searchText) ||
-            person.company.localizedCaseInsensitiveContains(searchText) ||
-            person.role.localizedCaseInsensitiveContains(searchText)
-        }
-    }
-    
-    var body: some View {
-        ZStack {
-            // Unique starry background for PeopleListView
-            StarryBackground(
-                stars: (0..<120).map { _ in
-                    Star(
-                        x: CGFloat.random(in: 0...1),
-                        y: CGFloat.random(in: 0...1),
-                        size: CGFloat.random(in: 1...3),
-                        opacity: Double.random(in: 0.15...0.6),
-                        color: [Color(red: 1.0, green: 0.9, blue: 0.8), Color(red: 0.95, green: 1.0, blue: 0.9)].randomElement()!
-                    )
-                }
-            )
-            .ignoresSafeArea()
-            
-            ScrollView {
-                VStack(spacing: 28) {
-                    // Header
-                    HStack(alignment: .top) {
-                        VStack(alignment: .leading, spacing: 10) {
-                            Button(action: { dismiss() }) {
-                                HStack(spacing: 4) {
-                                    Image(systemName: "chevron.left").font(.system(size: 16, weight: .semibold))
-                                    Text("Back").font(.system(size: 16))
-                                }
-                                .foregroundColor(.white.opacity(0.8))
-                            }
-                            .padding(.bottom, 4)
 
-                            Text("VOID")
-                                .font(.system(size: 44, weight: .ultraLight, design: .default))
-                                .foregroundColor(.white)
-                                .tracking(6)
-                                .shadow(color: Color.purple.opacity(0.3), radius: 20, x: 0, y: 0)
-                            
-                            Text("PEOPLE")
-                                .font(.system(size: 13, weight: .medium))
-                                .foregroundColor(Color(red: 0.55, green: 0.5, blue: 0.65))
-                                .tracking(3)
-                        }
-                        Spacer()
-                        Button(action: { showingAddPerson = true }) {
-                            Image(systemName: "plus")
-                                .font(.system(size: 18, weight: .semibold))
-                                .foregroundColor(.white)
-                                .frame(width: 44, height: 44)
-                                .background(Color.white.opacity(0.08))
-                                .clipShape(Circle())
-                                .overlay(Circle().stroke(Color.white.opacity(0.12), lineWidth: 0.5))
-                        }
-                        .padding(.top, 4)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 24)
-                    .padding(.top, 50)
-                    
-                    // Search bar with glassmorphic styling
-                    HStack {
-                        Image(systemName: "magnifyingglass")
-                            .foregroundColor(Color(red: 0.5, green: 0.45, blue: 0.6))
-                            .font(.system(size: 16))
-                        
-                        TextField("Search people", text: $searchText)
-                            .font(.system(size: 16))
-                            .foregroundColor(.white)
-                    }
-                    .padding(14)
-                    .background(
-                        RoundedRectangle(cornerRadius: 16, style: .continuous)
-                            .fill(Color.white.opacity(0.04))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                    .stroke(Color.white.opacity(0.06), lineWidth: 0.5)
-                            )
-                    )
-                    .padding(.horizontal, 24)
-                    
-                    // People list with glassmorphic rows
-                    VStack(spacing: 12) {
-                        ForEach(filteredPeople) { person in
-                            NavigationLink(destination: PersonDetailView(person: person)) {
-                                PersonRow(person: person)
+    private var filtered: [Person] {
+        guard !searchText.isEmpty else { return people }
+        return people.filter {
+            $0.name.localizedCaseInsensitiveContains(searchText) || $0.company.localizedCaseInsensitiveContains(searchText) ||
+            $0.role.localizedCaseInsensitiveContains(searchText) || $0.phoneNumber.localizedCaseInsensitiveContains(searchText) || $0.email.localizedCaseInsensitiveContains(searchText)
+        }
+    }
+
+    var body: some View {
+        VoidPage(subtitle: "People", addAction: { showingAddPerson = true }) {
+            if !people.isEmpty { VoidSearchField(prompt: "Search people", text: $searchText) }
+
+            VStack(alignment: .leading, spacing: 10) {
+                if filtered.isEmpty {
+                    EmptyStateView(icon: "person.2", text: people.isEmpty ? "Add the people in your home, the tradespeople you use and your providers." : "Nothing matches.", buttonTitle: people.isEmpty ? "Add a person" : nil) { showingAddPerson = true }
+                }
+                ForEach(PersonKind.allCases) { kind in
+                    let group = filtered.filter { $0.kind == kind }
+                    if !group.isEmpty {
+                        GlassSectionHeader(title: kind == .household ? "Household" : (kind == .tradesperson ? "Tradespeople" : "Providers")).padding(.top, 4)
+                        ForEach(group) { person in
+                            LinkRow(icon: kind.icon, tint: VoidPalette.people, title: person.name,
+                                    subtitle: [person.role, person.company].filter { !$0.isEmpty }.joined(separator: " · ")) {
+                                PersonDetailView(person: person)
                             }
-                            .buttonStyle(PlainButtonStyle())
                             .contextMenu {
-                                Button(role: .destructive) {
-                                    withAnimation {
-                                        modelContext.delete(person)
-                                    }
-                                } label: {
-                                    Label("Delete", systemImage: "trash")
-                                }
+                                Button(role: .destructive) { modelContext.delete(person) } label: { Label("Delete", systemImage: "trash") }
                             }
-                        }
-                        
-                        if filteredPeople.isEmpty {
-                            VStack(spacing: 16) {
-                                Image(systemName: "person.2")
-                                    .font(.system(size: 48))
-                                    .foregroundColor(Color(red: 0.4, green: 0.35, blue: 0.5))
-                                
-                                Text("No people yet")
-                                    .font(.system(size: 16))
-                                    .foregroundColor(Color(red: 0.5, green: 0.45, blue: 0.6))
-                                
-                                Button(action: { showingAddPerson = true }) {
-                                    Text("Add Person")
-                                        .font(.system(size: 14, weight: .medium))
-                                        .foregroundColor(.white)
-                                        .padding(.horizontal, 20)
-                                        .padding(.vertical, 10)
-                                        .background(
-                                            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                                .fill(Color(red: 0.5, green: 0.35, blue: 0.65))
-                                        )
-                                }
-                            }
-                            .padding(.vertical, 40)
                         }
                     }
-                    .padding(.horizontal, 24)
-                    .padding(.bottom, 40)
                 }
             }
-            .sheet(isPresented: $showingAddPerson) {
-                AddPersonView()
-            }
+            .padding(.horizontal, 24)
         }
-        .navigationBarHidden(true)
-    }
-    
-    private func deletePeople(offsets: IndexSet) {
-        withAnimation {
-            for index in offsets {
-                modelContext.delete(filteredPeople[index])
-            }
-        }
+        .sheet(isPresented: $showingAddPerson) { EditPersonSheet(person: nil) }
     }
 }
 
@@ -164,284 +50,185 @@ struct PersonDetailView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
     @Bindable var person: Person
-    @State private var showingEditPerson = false
-    
-    var body: some View {
-        ZStack {
-            // Unique starry background for PersonDetailView
-            StarryBackground(
-                stars: (0..<120).map { _ in
-                    Star(
-                        x: CGFloat.random(in: 0...1),
-                        y: CGFloat.random(in: 0...1),
-                        size: CGFloat.random(in: 1...3),
-                        opacity: Double.random(in: 0.15...0.6),
-                        color: [Color(red: 1.0, green: 0.95, blue: 0.85), Color(red: 0.9, green: 0.8, blue: 1.0)].randomElement()!
-                    )
-                }
-            )
-            .ignoresSafeArea()
-            
-            ScrollView {
-                VStack(spacing: 20) {
-                    // Header
-                    HStack(alignment: .top) {
-                        VStack(alignment: .leading, spacing: 10) {
-                            Button(action: { dismiss() }) {
-                                HStack(spacing: 4) {
-                                    Image(systemName: "chevron.left")
-                                        .font(.system(size: 16, weight: .semibold))
-                                    Text("Back")
-                                        .font(.system(size: 16))
-                                }
-                                .foregroundColor(.white.opacity(0.8))
-                            }
-                            .padding(.bottom, 4)
+    @Query(sort: \Project.title) private var allProjects: [Project]
+    @State private var showingEdit = false
+    @State private var showingAddTask = false
+    @State private var linkingProjects = false
+    @State private var confirmDelete = false
 
-                            Text("VOID")
-                                .font(.system(size: 44, weight: .ultraLight, design: .default))
-                                .foregroundColor(.white)
-                                .tracking(6)
-                                .shadow(color: Color.purple.opacity(0.3), radius: 20, x: 0, y: 0)
-                            
-                            Text("PERSON")
-                                .font(.system(size: 13, weight: .medium))
-                                .foregroundColor(Color(red: 0.55, green: 0.5, blue: 0.65))
-                                .tracking(3)
-                        }
-                        Spacer()
-                        Button(action: { showingEditPerson = true }) {
-                            Image(systemName: "pencil")
-                                .font(.system(size: 16, weight: .semibold))
-                                .foregroundColor(.white)
-                                .frame(width: 44, height: 44)
-                                .background(Color.white.opacity(0.08))
-                                .clipShape(Circle())
-                                .overlay(Circle().stroke(Color.white.opacity(0.12), lineWidth: 0.5))
-                        }
-                        .padding(.top, 4)
+    var body: some View {
+        let projects = person.projects(in: allProjects)
+        let openTasks = person.assignedTasks.filter { !($0.repeatRule == .none && $0.isDone) }
+        VoidPage(subtitle: person.kind.rawValue) {
+            VStack(alignment: .leading, spacing: 18) {
+                HStack(alignment: .top, spacing: 14) {
+                    Text(String(person.name.prefix(1)).uppercased())
+                        .font(.system(size: 26, weight: .light)).foregroundColor(.white)
+                        .frame(width: 64, height: 64)
+                        .background(Circle().fill(LinearGradient(colors: [VoidPalette.people, VoidPalette.accent.opacity(0.5)], startPoint: .topLeading, endPoint: .bottomTrailing)))
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(person.name).font(.system(size: 26, weight: .light)).foregroundColor(.white)
+                        Text([person.role, person.company].filter { !$0.isEmpty }.joined(separator: " · "))
+                            .font(.system(size: 13)).foregroundColor(VoidPalette.muted)
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 24)
-                    .padding(.top, 50)
-                    
-                    // Person details with glassmorphic cards
-                    VStack(spacing: 16) {
-                        GlassDetailCard(label: "Name", value: person.name, icon: "person.fill", tint: Color(red: 0.5, green: 0.35, blue: 0.65))
-                        
-                        if !person.company.isEmpty {
-                            GlassDetailCard(label: "Company", value: person.company, icon: "building.2.fill", tint: Color(red: 0.25, green: 0.45, blue: 0.75))
-                        }
-                        
-                        if !person.role.isEmpty {
-                            GlassDetailCard(label: "Role", value: person.role, icon: "briefcase.fill", tint: Color(red: 0.55, green: 0.3, blue: 0.6))
-                        }
-                        
-                        if !person.phoneNumber.isEmpty {
-                            GlassDetailCard(label: "Phone", value: person.phoneNumber, icon: "phone.fill", tint: Color(red: 0.3, green: 0.5, blue: 0.55))
-                        }
-                        
-                        if !person.email.isEmpty {
-                            GlassDetailCard(label: "Email", value: person.email, icon: "envelope.fill", tint: Color(red: 0.2, green: 0.55, blue: 0.7))
-                        }
-                        
-                        if !person.notes.isEmpty {
-                            VStack(alignment: .leading, spacing: 12) {
-                                Text("NOTES")
-                                    .font(.system(size: 11, weight: .semibold))
-                                    .foregroundColor(Color(red: 0.5, green: 0.45, blue: 0.6))
-                                    .tracking(2)
-                                
-                                Text(person.notes)
-                                    .font(.system(size: 15))
-                                    .foregroundColor(.white)
-                                    .padding(12)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .background(
-                                        RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                            .fill(Color.white.opacity(0.02))
-                                            .overlay(
-                                                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                                    .stroke(Color.white.opacity(0.05), lineWidth: 0.5)
-                                            )
-                                    )
-                            }
-                        }
-                    }
-                    .padding(.horizontal, 24)
-                    .padding(.bottom, 40)
+                    Spacer()
+                    CircleIconButton(icon: "pencil", size: 38) { showingEdit = true }
                 }
+
+                HStack(spacing: 10) {
+                    if !person.phoneNumber.isEmpty, let url = URL(string: "sms:\(person.phoneNumber.filter { !$0.isWhitespace })") {
+                        contactButton("Text", icon: "message.fill", url: url)
+                    }
+                    if !person.email.isEmpty, let url = URL(string: "mailto:\(person.email)") {
+                        contactButton("Email", icon: "envelope.fill", url: url)
+                    }
+                    if !person.phoneNumber.isEmpty, let url = URL(string: "tel:\(person.phoneNumber.filter { !$0.isWhitespace })") {
+                        contactButton("Call", icon: "phone.fill", url: url)
+                    }
+                }
+
+                VStack(spacing: 10) {
+                    if !person.phoneNumber.isEmpty { GlassDetailCard(label: "PHONE", value: person.phoneNumber, icon: "phone", tint: VoidPalette.people) }
+                    if !person.email.isEmpty { GlassDetailCard(label: "EMAIL", value: person.email, icon: "envelope", tint: VoidPalette.people) }
+                    if !person.notes.isEmpty { GlassDetailCard(label: "NOTES", value: person.notes, icon: "note.text", tint: VoidPalette.muted) }
+                }
+
+                LinkedSection(title: "Jobs assigned", count: openTasks.count, addTitle: "Add", addAction: { showingAddTask = true }) {
+                    ForEach(openTasks) { task in
+                        LinkRow(icon: task.repeatRule == .none ? "circle" : "repeat", tint: VoidPalette.todo, title: task.title, subtitle: task.scheduleSummary) { TaskDetailView(task: task) }
+                    }
+                }
+
+                LinkedSection(title: "Projects", count: projects.count, addTitle: "Link", addAction: { linkingProjects = true }) {
+                    ForEach(projects) { project in
+                        LinkRow(icon: "hammer.fill", tint: VoidPalette.projects, title: project.title, subtitle: project.status.rawValue) { ProjectDetailView(project: project) }
+                    }
+                }
+
+                LinkedSection(title: "Bills", count: person.bills.count) {
+                    ForEach(person.bills) { bill in
+                        LinkRow(icon: bill.category.icon, tint: VoidPalette.bills, title: bill.name, subtitle: "\(Money.format(bill.amount)) · \(bill.frequency.rawValue)") { BillDetailView(bill: bill) }
+                    }
+                }
+
+                LinkedSection(title: "Maintenance plans", count: person.maintenancePlans.count) {
+                    ForEach(person.maintenancePlans) { plan in PlanRow(plan: plan) }
+                }
+
+                let work = person.maintenanceWork.sorted { $0.date > $1.date }
+                LinkedSection(title: "Work done", count: work.count) {
+                    let spent = work.reduce(0) { $0 + $1.cost }
+                    if spent > 0 {
+                        Text("\(work.count) jobs · \(Money.format(spent)) in total").font(.system(size: 12)).foregroundColor(VoidPalette.muted)
+                    }
+                    ForEach(work) { record in
+                        NavigationLink(destination: MaintenanceDetailView(maintenance: record)) { MaintenanceRow(maintenance: record) }.buttonStyle(.plain)
+                    }
+                }
+
+                let done = person.taskCompletions.sorted { $0.completedAt > $1.completedAt }.prefix(10)
+                LinkedSection(title: "Recently ticked off", count: done.count) {
+                    ForEach(Array(done)) { c in
+                        HStack {
+                            Image(systemName: "checkmark.circle.fill").foregroundColor(VoidPalette.done)
+                            Text(c.task?.title ?? "Job").foregroundColor(.white).font(.system(size: 14))
+                            Spacer()
+                            Text(DayText.relative(c.completedAt)).font(.system(size: 12)).foregroundColor(VoidPalette.muted)
+                        }
+                        .padding(12).voidCard(cornerRadius: 14)
+                    }
+                }
+
+                Button(role: .destructive, action: { confirmDelete = true }) {
+                    Label("Delete person", systemImage: "trash").font(.system(size: 14)).foregroundColor(VoidPalette.muted)
+                }
+                Text("Deleting a person keeps their projects, bills, jobs and history; only the link to them is removed.")
+                    .font(.system(size: 11)).foregroundColor(VoidPalette.faint)
             }
-            .sheet(isPresented: $showingEditPerson) {
-                EditPersonView(person: person)
+            .padding(.horizontal, 24)
+        }
+        .sheet(isPresented: $showingEdit) { EditPersonSheet(person: person) }
+        .sheet(isPresented: $showingAddTask) { EditTaskSheet(task: nil, presetPerson: person) }
+        .sheet(isPresented: $linkingProjects) {
+            MultiLinkSheet(title: "Projects", options: allProjects, label: { $0.title },
+                           isLinked: { p in p.contractors.contains { $0 === person } },
+                           toggle: { p in
+                               if let i = p.contractors.firstIndex(where: { $0 === person }) { p.contractors.remove(at: i) } else { p.contractors.append(person) }
+                           })
+        }
+        .confirmationDialog("Delete \(person.name)?", isPresented: $confirmDelete, titleVisibility: .visible) {
+            Button("Delete", role: .destructive) {
+                modelContext.delete(person)
+                dismiss()
             }
         }
-        .navigationBarHidden(true)
+    }
+
+    private func contactButton(_ title: String, icon: String, url: URL) -> some View {
+        Link(destination: url) {
+            VStack(spacing: 4) {
+                Image(systemName: icon).font(.system(size: 16))
+                Text(title).font(.system(size: 11, weight: .medium))
+            }
+            .foregroundColor(.white)
+            .frame(maxWidth: .infinity).padding(.vertical, 12)
+            .voidCard(cornerRadius: 14, tint: VoidPalette.people)
+        }
     }
 }
 
-struct AddPersonView: View {
+struct EditPersonSheet: View {
+    let person: Person?
+    var presetKind: PersonKind = .household
     @Environment(\.modelContext) private var modelContext
-    @Environment(\.dismiss) private var dismiss
-    
     @State private var name = ""
+    @State private var kind: PersonKind = .household
     @State private var company = ""
     @State private var role = ""
     @State private var phoneNumber = ""
     @State private var email = ""
     @State private var notes = ""
-    
+    @State private var loaded = false
+
     var body: some View {
-        ZStack {
-            // Unique starry background for AddPersonView
-            StarryBackground(
-                stars: (0..<120).map { _ in
-                    Star(
-                        x: CGFloat.random(in: 0...1),
-                        y: CGFloat.random(in: 0...1),
-                        size: CGFloat.random(in: 1...3),
-                        opacity: Double.random(in: 0.15...0.6),
-                        color: [Color(red: 1.0, green: 0.9, blue: 0.8), Color(red: 0.95, green: 1.0, blue: 0.9)].randomElement()!
-                    )
-                }
-            )
-            .ignoresSafeArea()
-            
-            NavigationStack {
-                ScrollView {
-                    VStack(spacing: 28) {
-                        // Header
-                        VStack(alignment: .leading, spacing: 10) {
-                            Text("VOID")
-                                .font(.system(size: 44, weight: .ultraLight, design: .default))
-                                .foregroundColor(.white)
-                                .tracking(6)
-                                .shadow(color: Color.purple.opacity(0.3), radius: 20, x: 0, y: 0)
-                            
-                            Text("ADD PERSON")
-                                .font(.system(size: 13, weight: .medium))
-                                .foregroundColor(Color(red: 0.55, green: 0.5, blue: 0.65))
-                                .tracking(3)
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, 24)
-                        .padding(.top, 50)
-                        
-                        // Form fields with glassmorphic styling
-                        VStack(spacing: 16) {
-                            GlassTextField(title: "Name", text: $name, icon: "person.fill", tint: Color(red: 0.5, green: 0.35, blue: 0.65))
-                            GlassTextField(title: "Company", text: $company, icon: "building.2.fill", tint: Color(red: 0.25, green: 0.45, blue: 0.75))
-                            GlassTextField(title: "Role", text: $role, icon: "briefcase.fill", tint: Color(red: 0.55, green: 0.3, blue: 0.6))
-                            GlassTextField(title: "Phone Number", text: $phoneNumber, icon: "phone.fill", tint: Color(red: 0.3, green: 0.5, blue: 0.55), keyboardType: .phonePad)
-                            GlassTextField(title: "Email", text: $email, icon: "envelope.fill", tint: Color(red: 0.2, green: 0.55, blue: 0.7), keyboardType: .emailAddress, autocapitalization: .none)
-                            GlassTextField(title: "Notes", text: $notes, icon: "note.text", tint: Color(red: 0.65, green: 0.4, blue: 0.35), isMultiline: true)
-                        }
-                        .padding(.horizontal, 24)
-                        .padding(.bottom, 40)
-                    }
-                }
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbarBackground(.hidden, for: .navigationBar)
-                .toolbar {
-                    ToolbarItem(placement: .navigationBarLeading) {
-                        Button("Cancel") { dismiss() }
-                            .font(.system(size: 16))
-                            .foregroundColor(.white.opacity(0.8))
-                    }
-                    ToolbarItem(placement: .navigationBarTrailing) {
-                        Button("Save") {
-                            savePerson()
-                            dismiss()
-                        }
-                        .font(.system(size: 16, weight: .semibold))
-                        .disabled(name.isEmpty)
-                        .foregroundColor(name.isEmpty ? .white.opacity(0.3) : Color(red: 0.5, green: 0.35, blue: 0.65))
-                    }
-                }
+        FormSheet(title: person == nil ? "New person" : "Edit person", canSave: !name.trimmingCharacters(in: .whitespaces).isEmpty, onSave: save) {
+            GlassTextField(title: "Name", text: $name, icon: "person.fill", tint: VoidPalette.people)
+            ChoicePickerField(title: "Who they are", selection: $kind, options: PersonKind.allCases) { $0.rawValue }
+            GlassTextField(title: kind == .household ? "Relationship (optional)" : "Trade or service", text: $role, icon: "briefcase.fill", tint: VoidPalette.people)
+            if kind != .household {
+                GlassTextField(title: "Company", text: $company, icon: "building.2.fill", tint: VoidPalette.people)
+            }
+            GlassTextField(title: "Phone", text: $phoneNumber, icon: "phone.fill", tint: VoidPalette.people, keyboardType: .phonePad)
+            GlassTextField(title: "Email", text: $email, icon: "envelope.fill", tint: VoidPalette.people, keyboardType: .emailAddress)
+            GlassTextField(title: "Notes", text: $notes, icon: "note.text", tint: VoidPalette.muted, isMultiline: true)
+        }
+        .onAppear {
+            guard !loaded else { return }
+            loaded = true
+            if let person {
+                name = person.name; kind = person.kind; company = person.company; role = person.role
+                phoneNumber = person.phoneNumber; email = person.email; notes = person.notes
+            } else {
+                kind = presetKind
             }
         }
     }
-    
-    private func savePerson() {
-        let person = Person(name: name, company: company, role: role, phoneNumber: phoneNumber, email: email, notes: notes)
-        modelContext.insert(person)
+
+    private func save() {
+        let target = person ?? Person(name: name)
+        if person == nil { modelContext.insert(target) }
+        target.name = name.trimmingCharacters(in: .whitespaces)
+        target.kind = kind
+        target.company = company
+        target.role = role
+        target.phoneNumber = phoneNumber
+        target.email = email
+        target.notes = notes
+        try? modelContext.save()
     }
 }
 
-struct EditPersonView: View {
-    @Environment(\.dismiss) private var dismiss
-    @Bindable var person: Person
-    
-    var body: some View {
-        ZStack {
-            // Unique starry background for EditPersonView
-            StarryBackground(
-                stars: (0..<120).map { _ in
-                    Star(
-                        x: CGFloat.random(in: 0...1),
-                        y: CGFloat.random(in: 0...1),
-                        size: CGFloat.random(in: 1...3),
-                        opacity: Double.random(in: 0.15...0.6),
-                        color: [Color(red: 1.0, green: 0.95, blue: 0.85), Color(red: 0.9, green: 0.8, blue: 1.0)].randomElement()!
-                    )
-                }
-            )
-            .ignoresSafeArea()
-            
-            NavigationStack {
-                ScrollView {
-                    VStack(spacing: 28) {
-                        // Header
-                        VStack(alignment: .leading, spacing: 10) {
-                            Text("VOID")
-                                .font(.system(size: 44, weight: .ultraLight, design: .default))
-                                .foregroundColor(.white)
-                                .tracking(6)
-                                .shadow(color: Color.purple.opacity(0.3), radius: 20, x: 0, y: 0)
-                            
-                            Text("EDIT PERSON")
-                                .font(.system(size: 13, weight: .medium))
-                                .foregroundColor(Color(red: 0.55, green: 0.5, blue: 0.65))
-                                .tracking(3)
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, 24)
-                        .padding(.top, 50)
-                        
-                        // Form fields with glassmorphic styling
-                        VStack(spacing: 16) {
-                            GlassTextField(title: "Name", text: $person.name, icon: "person.fill", tint: Color(red: 0.5, green: 0.35, blue: 0.65))
-                            GlassTextField(title: "Company", text: $person.company, icon: "building.2.fill", tint: Color(red: 0.25, green: 0.45, blue: 0.75))
-                            GlassTextField(title: "Role", text: $person.role, icon: "briefcase.fill", tint: Color(red: 0.55, green: 0.3, blue: 0.6))
-                            GlassTextField(title: "Phone Number", text: $person.phoneNumber, icon: "phone.fill", tint: Color(red: 0.3, green: 0.5, blue: 0.55), keyboardType: .phonePad)
-                            GlassTextField(title: "Email", text: $person.email, icon: "envelope.fill", tint: Color(red: 0.2, green: 0.55, blue: 0.7), keyboardType: .emailAddress, autocapitalization: .none)
-                            GlassTextField(title: "Notes", text: $person.notes, icon: "note.text", tint: Color(red: 0.65, green: 0.4, blue: 0.35), isMultiline: true)
-                        }
-                        .padding(.horizontal, 24)
-                        .padding(.bottom, 40)
-                    }
-                }
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbarBackground(.hidden, for: .navigationBar)
-                .toolbar {
-                    ToolbarItem(placement: .navigationBarLeading) {
-                        Button("Cancel") { dismiss() }
-                            .font(.system(size: 16))
-                            .foregroundColor(.white.opacity(0.8))
-                    }
-                    ToolbarItem(placement: .navigationBarTrailing) {
-                        Button("Save") { dismiss() }
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundColor(Color(red: 0.5, green: 0.35, blue: 0.65))
-                    }
-                }
-            }
-        }
-    }
-}
-
-#Preview {
-    NavigationStack {
-        PeopleListView()
-    }
+/// Kept for older call sites.
+struct AddPersonView: View {
+    var body: some View { EditPersonSheet(person: nil, presetKind: .tradesperson) }
 }
