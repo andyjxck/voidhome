@@ -32,6 +32,8 @@ struct RoomsListView: View {
     @State private var isEditMode = true
     @State private var isDoorMode = false
     @State private var selectedDoor: Door?
+    /// The room being dragged, which draws its own walls until it is dropped.
+    @State private var draggingRoomID: PersistentIdentifier?
     
     // Performance optimization: Generate starry background once
     @State private var backgroundStars = StarryBackground.generateStars()
@@ -163,9 +165,18 @@ struct RoomsListView: View {
                                         isSelected: selectedRoom?.id == room.id,
                                         isEditMode: isEditMode && !isDoorMode,
                                         onTap: { selectedDoor = nil; selectedRoom = room },
-                                        onDoorTap: { door in selectedDoor = door }
+                                        onDoorTap: { door in selectedDoor = door },
+                                        onDragActive: { active in draggingRoomID = active ? room.persistentModelID : nil }
                                     )
                                 }
+
+                                // Walls, doors and measurements for the whole floor, drawn once so shared walls join
+                                FloorplanWallsLayer(
+                                    rooms: filteredRooms,
+                                    canvasSize: geo.size,
+                                    excludedRoomID: draggingRoomID,
+                                    selectedRoomID: selectedRoom.flatMap { $0.floorNumber == currentFloor ? $0.persistentModelID : nil }
+                                )
 
                                 // Door mode: "+" buttons on every outside edge of the selected room, its extra pieces included
                                 if isDoorMode, let room = selectedRoom, room.floorNumber == currentFloor {
@@ -235,18 +246,23 @@ struct RoomsListView: View {
                         .padding(.bottom, 10)
                         
                         VStack {
-                            HStack {
-                                if isDoorMode {
-                                    Text(selectedRoom == nil ? "Tap a room, then a + to add a door" : "Tap + to add a door, or a door to edit it")
-                                        .font(.system(size: 12, weight: .medium))
-                                        .foregroundColor(.white.opacity(0.75))
-                                        .padding(.horizontal, 12)
-                                        .padding(.vertical, 6)
-                                        .background(BlurView(style: .systemUltraThinMaterialDark))
-                                        .clipShape(Capsule())
-                                        .padding(.leading, 28)
-                                        .padding(.top, 10)
+                            HStack(alignment: .top) {
+                                VStack(alignment: .leading, spacing: 8) {
+                                    if isDoorMode {
+                                        Text(selectedRoom == nil ? "Tap a room, then a + to add a door" : "Tap + to add a door, or a door to edit it")
+                                            .font(.system(size: 12, weight: .medium))
+                                            .foregroundColor(.white.opacity(0.75))
+                                            .padding(.horizontal, 12)
+                                            .padding(.vertical, 6)
+                                            .background(BlurView(style: .systemUltraThinMaterialDark))
+                                            .clipShape(Capsule())
+                                    }
+                                    if !filteredRooms.isEmpty {
+                                        FloorplanScaleBar(zoom: effectiveZoom)
+                                    }
                                 }
+                                .padding(.leading, 28)
+                                .padding(.top, 10)
                                 Spacer()
                                 if zoomScale != 1.0 || panX != 0 || panY != 0 {
                                     Button(action: { resetView() }) {
@@ -605,6 +621,8 @@ struct InteractiveFloorplanRoom: View {
     let isEditMode: Bool
     let onTap: () -> Void
     var onDoorTap: ((Door) -> Void)? = nil
+    /// Told when a drag starts and ends, so the plan can hand this room's walls to it while it moves.
+    var onDragActive: ((Bool) -> Void)? = nil
 
     private let ppm = FloorplanGeometry.pointsPerMetre
     private let gridStep: CGFloat = 0.1          // metres; used when no edge is close enough to snap to
@@ -641,26 +659,25 @@ struct InteractiveFloorplanRoom: View {
                 doors: room.doors,
                 scale: ppm,
                 isSelected: isSelected,
-                hostRect: { door in FloorplanGeometry.hostRect(for: door, in: room) }
+                hostRect: { door in FloorplanGeometry.hostRect(for: door, in: room) },
+                layer: dragCenter != nil ? .complete : .floor
             )
             .frame(width: side, height: side)
             .allowsHitTesting(false)
 
-            // Room label — counter-rotated so it always reads upright
+            // Room label: name, floor area and a dot per item — counter-rotated so it always reads upright
             VStack(spacing: 2) {
                 Text(room.name)
                     .font(.system(size: 10, weight: .bold))
                     .foregroundColor(.white)
                     .lineLimit(1)
                     .minimumScaleFactor(0.5)
-                Text(String(format: "%.1fx%.1fm", room.width, room.height))
-                    .font(.system(size: 8))
-                    .foregroundColor(.white.opacity(0.6))
+                Text(String(format: "%.1f m²", room.area))
+                    .font(.system(size: 8, weight: .medium))
+                    .foregroundColor(.white.opacity(0.65))
                     .minimumScaleFactor(0.5)
                 if !room.assets.isEmpty {
-                    Text("\(room.assets.count) item\(room.assets.count == 1 ? "" : "s")")
-                        .font(.system(size: 7, weight: .semibold))
-                        .foregroundColor(Color(red: 0.6, green: 0.75, blue: 1.0).opacity(0.8))
+                    AssetCountDots(count: room.assets.count)
                 }
             }
             .padding(.horizontal, 6)
@@ -730,6 +747,7 @@ struct InteractiveFloorplanRoom: View {
                 let proposed = CGPoint(x: start.x + gesture.translation.width / ppm,
                                        y: start.y + gesture.translation.height / ppm)
                 let result = resolve(proposed)
+                if dragCenter == nil { onDragActive?(true) }
                 dragCenter = result.center
                 lastValidCenter = result.center
                 snapLineX = result.lineX
@@ -752,6 +770,7 @@ struct InteractiveFloorplanRoom: View {
                 snapLineX = nil
                 snapLineY = nil
                 wasSnapping = false
+                onDragActive?(false)
             }
     }
 
@@ -823,6 +842,175 @@ struct InteractiveFloorplanRoom: View {
 }
 
 // MARK: - Composite Room Shape (Canvas-based, one unified shape)
+/// Which parts of a room a CompositeRoomShape draws.
+enum FloorplanRoomLayer {
+    /// Floor and selection only. Walls and doors come from FloorplanWallsLayer, drawn once for the whole plan,
+    /// so walls shared by two rooms join into one and a door opening cuts through both rooms' walls.
+    case floor
+    /// Floor, walls and doors together. Used while a room is being dragged, and for single-room drawings.
+    case complete
+}
+
+/// Drawing shared by a single room and the whole-plan wall layer. All geometry is in points,
+/// in the room's own unrotated frame, centred on (0, 0).
+enum FloorplanDrawing {
+    static let wallThicknessMetres: CGFloat = 0.15
+    static let doorWidthMetres: CGFloat = 0.8
+    static let wallColor = Color(red: 0.86, green: 0.86, blue: 0.92)
+    static let doorColor = Color(red: 0.85, green: 0.85, blue: 0.9)
+    static let arcColor = Color(red: 0.6, green: 0.6, blue: 0.68)
+    static let dimensionColor = Color(red: 0.62, green: 0.72, blue: 0.95)
+
+    static func wallThickness(scale: CGFloat) -> CGFloat { max(2, wallThicknessMetres * scale) }
+
+    static func pieceRects(width: Double, height: Double, parts: [RoomPart], scale: CGFloat) -> [CGRect] {
+        FloorplanGeometry.localRects(width: width, height: height, parts: parts).map {
+            CGRect(x: $0.minX * scale, y: $0.minY * scale, width: $0.width * scale, height: $0.height * scale)
+        }
+    }
+
+    /// The room's outline as one shape, so edges where its pieces meet have no wall.
+    static func outline(_ rects: [CGRect]) -> Path {
+        guard let first = rects.first else { return Path() }
+        return rects.dropFirst().reduce(Path(first)) { $0.union(Path($1)) }
+    }
+
+    /// The wall band: a stroke of the given thickness centred on the room's outline.
+    static func walls(_ rects: [CGRect], thickness: CGFloat) -> Path {
+        outline(rects).strokedPath(StrokeStyle(lineWidth: thickness, lineCap: .butt, lineJoin: .miter))
+    }
+
+    struct DoorGeometry {
+        /// The opening cut out of the wall.
+        let opening: CGRect
+        /// One or two leaves: hinge, closed tip (along the wall) and open tip (square to the wall).
+        let leaves: [(hinge: CGPoint, closedTip: CGPoint, openTip: CGPoint)]
+        let leafLength: CGFloat
+    }
+
+    static func doorGeometry(_ door: Door, host: CGRect, scale: CGFloat, thickness: CGFloat) -> DoorGeometry {
+        let single = doorWidthMetres * scale
+        let dw = door.isDoubleDoor ? single * 2 : single
+        let pos = CGFloat(door.position)
+        let horizontal = door.edge == .top || door.edge == .bottom
+        let x: CGFloat
+        let y: CGFloat
+        switch door.edge {
+        case .top: x = host.minX + pos * host.width; y = host.minY
+        case .bottom: x = host.minX + pos * host.width; y = host.maxY
+        case .left: x = host.minX; y = host.minY + pos * host.height
+        case .right: x = host.maxX; y = host.minY + pos * host.height
+        }
+        let across = thickness + 2
+        let opening = horizontal
+            ? CGRect(x: x - dw / 2, y: y - across / 2, width: dw, height: across)
+            : CGRect(x: x - across / 2, y: y - dw / 2, width: across, height: dw)
+        let leaf = door.isDoubleDoor ? dw / 2 - 1 : dw
+
+        // Which way "into the room" is from this wall.
+        let inward: CGPoint
+        switch door.edge {
+        case .top: inward = CGPoint(x: 0, y: 1)
+        case .bottom: inward = CGPoint(x: 0, y: -1)
+        case .left: inward = CGPoint(x: 1, y: 0)
+        case .right: inward = CGPoint(x: -1, y: 0)
+        }
+        let swing = door.opensInward ? inward : CGPoint(x: -inward.x, y: -inward.y)
+        let along = horizontal ? CGPoint(x: 1, y: 0) : CGPoint(x: 0, y: 1)
+
+        func makeLeaf(hingeAtStart: Bool) -> (hinge: CGPoint, closedTip: CGPoint, openTip: CGPoint) {
+            let sign: CGFloat = hingeAtStart ? 1 : -1
+            let hinge = CGPoint(x: x - sign * along.x * dw / 2, y: y - sign * along.y * dw / 2)
+            let closed = CGPoint(x: hinge.x + sign * along.x * leaf, y: hinge.y + sign * along.y * leaf)
+            let open = CGPoint(x: hinge.x + swing.x * leaf, y: hinge.y + swing.y * leaf)
+            return (hinge, closed, open)
+        }
+        var leaves = [makeLeaf(hingeAtStart: door.opensLeft)]
+        if door.isDoubleDoor { leaves.append(makeLeaf(hingeAtStart: !door.opensLeft)) }
+        return DoorGeometry(opening: opening, leaves: leaves, leafLength: leaf)
+    }
+
+    /// Clears each door's opening out of the walls already drawn in this context.
+    static func cutOpenings(_ ctx: inout GraphicsContext, _ doors: [DoorGeometry]) {
+        var c = ctx
+        c.blendMode = .clear
+        for d in doors { c.fill(Path(d.opening), with: .color(.black)) }
+    }
+
+    /// Door leaves and their swing arcs.
+    static func drawLeaves(_ ctx: GraphicsContext, _ doors: [DoorGeometry]) {
+        for d in doors {
+            for leaf in d.leaves {
+                let start = atan2(leaf.closedTip.y - leaf.hinge.y, leaf.closedTip.x - leaf.hinge.x)
+                let end = atan2(leaf.openTip.y - leaf.hinge.y, leaf.openTip.x - leaf.hinge.x)
+                var delta = end - start
+                while delta > .pi { delta -= 2 * .pi }
+                while delta < -.pi { delta += 2 * .pi }
+                var arc = Path()
+                arc.move(to: leaf.closedTip)
+                arc.addArc(center: leaf.hinge, radius: d.leafLength, startAngle: .radians(start), endAngle: .radians(end), clockwise: delta < 0)
+                ctx.stroke(arc, with: .color(arcColor.opacity(0.7)), style: StrokeStyle(lineWidth: 0.8, dash: [3, 2]))
+                var panel = Path()
+                panel.move(to: leaf.hinge)
+                panel.addLine(to: leaf.openTip)
+                ctx.stroke(panel, with: .color(doorColor), lineWidth: 2)
+            }
+        }
+    }
+
+    /// Draws the room's floor; selected rooms get a blue floor and a blue line along the walls.
+    static func drawFloor(_ ctx: GraphicsContext, rects: [CGRect], isSelected: Bool, thickness: CGFloat) {
+        let shape = outline(rects)
+        ctx.fill(shape, with: .color(isSelected ? Color.blue.opacity(0.25) : Color.white.opacity(0.05)))
+        if isSelected {
+            ctx.stroke(shape, with: .color(Color.blue.opacity(0.9)), lineWidth: thickness + 3)
+        }
+    }
+
+    /// A measurement line with end ticks and a label, between two points on the plan.
+    static func drawDimension(_ ctx: GraphicsContext, from a: CGPoint, to b: CGPoint, label: String, vertical: Bool) {
+        var line = Path()
+        line.move(to: a)
+        line.addLine(to: b)
+        let tick: CGFloat = 4
+        if vertical {
+            line.move(to: CGPoint(x: a.x - tick, y: a.y)); line.addLine(to: CGPoint(x: a.x + tick, y: a.y))
+            line.move(to: CGPoint(x: b.x - tick, y: b.y)); line.addLine(to: CGPoint(x: b.x + tick, y: b.y))
+        } else {
+            line.move(to: CGPoint(x: a.x, y: a.y - tick)); line.addLine(to: CGPoint(x: a.x, y: a.y + tick))
+            line.move(to: CGPoint(x: b.x, y: b.y - tick)); line.addLine(to: CGPoint(x: b.x, y: b.y + tick))
+        }
+        ctx.stroke(line, with: .color(dimensionColor.opacity(0.85)), lineWidth: 0.8)
+
+        let mid = CGPoint(x: (a.x + b.x) / 2, y: (a.y + b.y) / 2)
+        let text = ctx.resolve(Text(label).font(.system(size: 8, weight: .semibold)).foregroundColor(dimensionColor))
+        let size = text.measure(in: CGSize(width: 200, height: 40))
+        var c = ctx
+        c.translateBy(x: mid.x, y: mid.y)
+        if vertical { c.rotate(by: .degrees(-90)) }
+        let bg = CGRect(x: -size.width / 2 - 3, y: -size.height / 2 - 1, width: size.width + 6, height: size.height + 2)
+        c.fill(Path(roundedRect: bg, cornerRadius: 3), with: .color(Color(red: 0.06, green: 0.06, blue: 0.1).opacity(0.9)))
+        c.draw(text, at: .zero, anchor: .center)
+    }
+
+    /// Width and depth lines along the top and left of a box on the plan, just outside its walls.
+    static func drawDimensions(_ ctx: GraphicsContext, box: CGRect, scale: CGFloat, thickness: CGFloat) {
+        guard box.width > 1, box.height > 1 else { return }
+        let gap = thickness / 2 + 10
+        let y = box.minY - gap
+        drawDimension(ctx, from: CGPoint(x: box.minX, y: y), to: CGPoint(x: box.maxX, y: y),
+                      label: metres(box.width / scale), vertical: false)
+        let x = box.minX - gap
+        drawDimension(ctx, from: CGPoint(x: x, y: box.minY), to: CGPoint(x: x, y: box.maxY),
+                      label: metres(box.height / scale), vertical: true)
+    }
+
+    static func metres(_ m: CGFloat) -> String {
+        String(format: "%.2f m", Double(m))
+    }
+}
+
+/// One room drawn in its own frame (the view rotates it).
 struct CompositeRoomShape: View {
     let roomWidth: CGFloat
     let roomHeight: CGFloat
@@ -832,211 +1020,163 @@ struct CompositeRoomShape: View {
     let isSelected: Bool
     /// The piece each door sits on, in metres relative to the room centre. Nil means the main rectangle.
     var hostRect: ((Door) -> CGRect)? = nil
-
-    private let doorWidth: CGFloat = 28 // visual width of door gap in points
+    var layer: FloorplanRoomLayer = .complete
 
     var body: some View {
         Canvas { context, size in
-            let centerX = size.width / 2
-            let centerY = size.height / 2
+            var ctx = context
+            ctx.translateBy(x: size.width / 2, y: size.height / 2)
+            let rects = FloorplanDrawing.pieceRects(width: Double(roomWidth / max(scale, 0.0001)),
+                                                    height: Double(roomHeight / max(scale, 0.0001)),
+                                                    parts: parts, scale: scale)
+            let t = FloorplanDrawing.wallThickness(scale: scale)
+            FloorplanDrawing.drawFloor(ctx, rects: rects, isSelected: isSelected, thickness: t)
+            guard layer == .complete else { return }
 
-            // Collect all rectangles (base + parts)
-            var rects: [CGRect] = []
-            let baseRect = CGRect(x: centerX - roomWidth / 2, y: centerY - roomHeight / 2, width: roomWidth, height: roomHeight)
-            rects.append(baseRect)
-            for part in parts {
-                let pw = CGFloat(part.width) * scale
-                let ph = CGFloat(part.height) * scale
-                let px = centerX + CGFloat(part.xOffset) * scale
-                let py = centerY + CGFloat(part.yOffset) * scale
-                rects.append(CGRect(x: px - pw / 2, y: py - ph / 2, width: pw, height: ph))
-            }
-
-            let strokeColor = isSelected ? Color.blue : Color.white.opacity(0.2)
-            let fillColor = isSelected ? Color.blue.opacity(0.3) : Color.white.opacity(0.05)
-            let lineWidth: CGFloat = isSelected ? 2 : 1
-            let inflate: CGFloat = 3
-
-            // Step 1: Fill inflated rects with stroke color
-            var outlinePath = Path()
-            for r in rects {
-                let inflated = CGRect(x: r.minX - inflate, y: r.minY - inflate,
-                                      width: r.width + inflate * 2, height: r.height + inflate * 2)
-                outlinePath.addRect(inflated)
-            }
-            context.fill(outlinePath, with: .color(strokeColor))
-
-            // Step 2: Fill normal rects with fill color
-            var fillPath = Path()
-            for r in rects {
-                fillPath.addRect(r)
-            }
-            context.fill(fillPath, with: .color(fillColor))
-            context.fill(fillPath, with: .color(fillColor))
-
-            // Step 3: Draw doors — erase a gap in the wall and draw swing arc
-            for door in doors {
-                let doorPos = CGFloat(door.position)
-                let doorHostRect: CGRect = {
-                    guard let host = hostRect?(door) else { return baseRect }
-                    return CGRect(x: centerX + host.minX * scale, y: centerY + host.minY * scale,
-                                  width: host.width * scale, height: host.height * scale)
-                }()
-                let dw = door.isDoubleDoor ? doorWidth * 2.0 : doorWidth
-
-                // Calculate door position on the base rect edge
-                var doorX: CGFloat = 0
-                var doorY: CGFloat = 0
-                var isHorizontal = false
-
-                switch door.edge {
-                case .top:
-                    doorX = doorHostRect.minX + doorPos * doorHostRect.width
-                    doorY = doorHostRect.minY
-                    isHorizontal = true
-                case .bottom:
-                    doorX = doorHostRect.minX + doorPos * doorHostRect.width
-                    doorY = doorHostRect.maxY
-                    isHorizontal = true
-                case .left:
-                    doorX = doorHostRect.minX
-                    doorY = doorHostRect.minY + doorPos * doorHostRect.height
-                    isHorizontal = false
-                case .right:
-                    doorX = doorHostRect.maxX
-                    doorY = doorHostRect.minY + doorPos * doorHostRect.height
-                    isHorizontal = false
-                }
-
-                // Erase the wall segment where the door is (draw fill color over it)
-                let eraseRect: CGRect
-                if isHorizontal {
-                    eraseRect = CGRect(x: doorX - dw/2 - inflate, y: doorY - inflate - 1,
-                                       width: dw + inflate * 2, height: inflate * 2 + 2)
+            // Walls and door openings go on their own layer so clearing an opening leaves the floor intact.
+            let base = rects.first ?? .zero
+            let geometry = doors.map { door -> FloorplanDrawing.DoorGeometry in
+                let host: CGRect
+                if let h = hostRect?(door) {
+                    host = CGRect(x: h.minX * scale, y: h.minY * scale, width: h.width * scale, height: h.height * scale)
                 } else {
-                    eraseRect = CGRect(x: doorX - inflate - 1, y: doorY - dw/2 - inflate,
-                                       width: inflate * 2 + 2, height: dw + inflate * 2)
+                    host = base
                 }
-                context.fill(Path(eraseRect), with: .color(fillColor))
+                return FloorplanDrawing.doorGeometry(door, host: host, scale: scale, thickness: t)
+            }
+            ctx.drawLayer { wallCtx in
+                wallCtx.fill(FloorplanDrawing.walls(rects, thickness: t), with: .color(FloorplanDrawing.wallColor))
+                FloorplanDrawing.cutOpenings(&wallCtx, geometry)
+            }
+            FloorplanDrawing.drawLeaves(ctx, geometry)
+        }
+    }
+}
 
-                let doorColor = Color(red: 0.85, green: 0.85, blue: 0.9)
-                let arcColor = Color(red: 0.5, green: 0.5, blue: 0.55)
-                let doorLen = door.isDoubleDoor ? (dw / 2) - 1.5 : dw
+/// Walls, doors and measurements for every room on the floor, drawn once in plan coordinates.
+/// Walls of rooms that touch overlap exactly, so a shared wall reads as one wall,
+/// and each door opening is cut through every wall at that spot.
+struct FloorplanWallsLayer: View {
+    let rooms: [Room]
+    let canvasSize: CGSize
+    /// The room being dragged draws its own walls so they follow the finger.
+    let excludedRoomID: PersistentIdentifier?
+    /// Measurements are shown for this room, or for the whole floor when nil.
+    let selectedRoomID: PersistentIdentifier?
 
-                // Hinge is at one end of the door gap
-                // opensLeft = hinge at left/top end; !opensLeft = hinge at right/bottom end
-                // opensInward = door swings into room; !opensInward = swings outward
+    private let ppm = FloorplanGeometry.pointsPerMetre
 
-                // Compute hinge point, closed tip (along wall), open tip (perpendicular)
-                let hinge: CGPoint
-                let closedTip: CGPoint  // where door tip would be if closed (along wall)
-                let openTip: CGPoint    // where door tip is when open (perpendicular)
+    var body: some View {
+        Canvas { context, size in
+            let origin = CGPoint(x: canvasSize.width / 2, y: canvasSize.height / 2)
+            let t = FloorplanDrawing.wallThickness(scale: ppm)
+            let shown = rooms.filter { $0.persistentModelID != excludedRoomID }
 
-                switch door.edge {
-                case .bottom:
-                    // Wall is horizontal, interior is above (negative Y)
-                    hinge = CGPoint(x: door.opensLeft ? doorX - dw/2 : doorX + dw/2, y: doorY)
-                    // Closed: door lies along wall toward the other end of gap
-                    closedTip = CGPoint(x: door.opensLeft ? hinge.x + doorLen : hinge.x - doorLen, y: doorY)
-                    // Open: perpendicular to wall, inward=up or outward=down
-                    openTip = CGPoint(x: hinge.x, y: doorY + (door.opensInward ? -doorLen : doorLen))
-
-                case .top:
-                    // Wall is horizontal, interior is below (positive Y)
-                    hinge = CGPoint(x: door.opensLeft ? doorX - dw/2 : doorX + dw/2, y: doorY)
-                    closedTip = CGPoint(x: door.opensLeft ? hinge.x + doorLen : hinge.x - doorLen, y: doorY)
-                    openTip = CGPoint(x: hinge.x, y: doorY + (door.opensInward ? doorLen : -doorLen))
-
-                case .left:
-                    // Wall is vertical, interior is to the right (positive X)
-                    hinge = CGPoint(x: doorX, y: door.opensLeft ? doorY - dw/2 : doorY + dw/2)
-                    closedTip = CGPoint(x: doorX, y: door.opensLeft ? hinge.y + doorLen : hinge.y - doorLen)
-                    openTip = CGPoint(x: doorX + (door.opensInward ? doorLen : -doorLen), y: hinge.y)
-
-                case .right:
-                    // Wall is vertical, interior is to the left (negative X)
-                    hinge = CGPoint(x: doorX, y: door.opensLeft ? doorY - dw/2 : doorY + dw/2)
-                    closedTip = CGPoint(x: doorX, y: door.opensLeft ? hinge.y + doorLen : hinge.y - doorLen)
-                    openTip = CGPoint(x: doorX + (door.opensInward ? -doorLen : doorLen), y: hinge.y)
+            struct Placed {
+                let center: CGPoint
+                let turns: Int
+                let rects: [CGRect]
+                let doors: [FloorplanDrawing.DoorGeometry]
+            }
+            let placed: [Placed] = shown.map { room in
+                let c = FloorplanGeometry.center(of: room)
+                let center = CGPoint(x: origin.x + c.x * ppm, y: origin.y + c.y * ppm)
+                let rects = FloorplanDrawing.pieceRects(width: room.width, height: room.height, parts: room.parts, scale: ppm)
+                let doors = room.doors.map { door -> FloorplanDrawing.DoorGeometry in
+                    let h = FloorplanGeometry.hostRect(for: door, in: room)
+                    let host = CGRect(x: h.minX * ppm, y: h.minY * ppm, width: h.width * ppm, height: h.height * ppm)
+                    return FloorplanDrawing.doorGeometry(door, host: host, scale: ppm, thickness: t)
                 }
+                return Placed(center: center, turns: FloorplanGeometry.quarterTurns(room.rotation), rects: rects, doors: doors)
+            }
 
-                // Compute arc from closedTip to openTip, centered at hinge
-                // Angle from hinge to a point: atan2(dy, dx) in screen coords (Y down)
-                let startAngle = atan2(closedTip.y - hinge.y, closedTip.x - hinge.x)
-                let endAngle = atan2(openTip.y - hinge.y, openTip.x - hinge.x)
+            func inRoomFrame(_ ctx: GraphicsContext, _ p: Placed) -> GraphicsContext {
+                var c = ctx
+                c.translateBy(x: p.center.x, y: p.center.y)
+                c.rotate(by: .degrees(Double(p.turns * 90)))
+                return c
+            }
 
-                // Determine clockwise: in screen coords (Y down), clockwise = increasing angle
-                // We want the short way (90 degrees)
-                var delta = endAngle - startAngle
-                while delta > .pi { delta -= 2 * .pi }
-                while delta < -.pi { delta += 2 * .pi }
-                // SwiftUI's flipped coordinate system: clockwise:true = counterclockwise visually
-                // We want the short 90-degree arc, so invert the direction
-                let clockwise = delta < 0
-
-                var arcPath = Path()
-                arcPath.addArc(center: hinge, radius: doorLen,
-                               startAngle: .radians(startAngle),
-                               endAngle: .radians(endAngle),
-                               clockwise: clockwise)
-
-                // Door panel: from hinge to open tip
-                var doorPanel = Path()
-                doorPanel.move(to: hinge)
-                doorPanel.addLine(to: openTip)
-
-                // Draw swing arc
-                context.stroke(arcPath, with: .color(arcColor.opacity(0.5)), lineWidth: 0.8)
-                // Draw door panel
-                context.stroke(doorPanel, with: .color(doorColor), lineWidth: 2)
-
-                // Double door: draw second panel from opposite hinge
-                if door.isDoubleDoor {
-                    let hinge2: CGPoint
-                    let openTip2: CGPoint
-                    let closedTip2: CGPoint
-
-                    switch door.edge {
-                    case .bottom:
-                        hinge2 = CGPoint(x: door.opensLeft ? doorX + dw/2 : doorX - dw/2, y: doorY)
-                        closedTip2 = CGPoint(x: door.opensLeft ? hinge2.x - doorLen : hinge2.x + doorLen, y: doorY)
-                        openTip2 = CGPoint(x: hinge2.x, y: doorY + (door.opensInward ? -doorLen : doorLen))
-                    case .top:
-                        hinge2 = CGPoint(x: door.opensLeft ? doorX + dw/2 : doorX - dw/2, y: doorY)
-                        closedTip2 = CGPoint(x: door.opensLeft ? hinge2.x - doorLen : hinge2.x + doorLen, y: doorY)
-                        openTip2 = CGPoint(x: hinge2.x, y: doorY + (door.opensInward ? doorLen : -doorLen))
-                    case .left:
-                        hinge2 = CGPoint(x: doorX, y: door.opensLeft ? doorY + dw/2 : doorY - dw/2)
-                        closedTip2 = CGPoint(x: doorX, y: door.opensLeft ? hinge2.y - doorLen : hinge2.y + doorLen)
-                        openTip2 = CGPoint(x: doorX + (door.opensInward ? doorLen : -doorLen), y: hinge2.y)
-                    case .right:
-                        hinge2 = CGPoint(x: doorX, y: door.opensLeft ? doorY + dw/2 : doorY - dw/2)
-                        closedTip2 = CGPoint(x: doorX, y: door.opensLeft ? hinge2.y - doorLen : hinge2.y + doorLen)
-                        openTip2 = CGPoint(x: doorX + (door.opensInward ? -doorLen : doorLen), y: hinge2.y)
-                    }
-
-                    let startAngle2 = atan2(closedTip2.y - hinge2.y, closedTip2.x - hinge2.x)
-                    let endAngle2 = atan2(openTip2.y - hinge2.y, openTip2.x - hinge2.x)
-                    var delta2 = endAngle2 - startAngle2
-                    while delta2 > .pi { delta2 -= 2 * .pi }
-                    while delta2 < -.pi { delta2 += 2 * .pi }
-                    let clockwise2 = delta2 < 0
-
-                    var arcPath2 = Path()
-                    arcPath2.addArc(center: hinge2, radius: doorLen,
-                                    startAngle: .radians(startAngle2),
-                                    endAngle: .radians(endAngle2),
-                                    clockwise: clockwise2)
-
-                    var doorPanel2 = Path()
-                    doorPanel2.move(to: hinge2)
-                    doorPanel2.addLine(to: openTip2)
-
-                    context.stroke(arcPath2, with: .color(arcColor.opacity(0.5)), lineWidth: 0.8)
-                    context.stroke(doorPanel2, with: .color(doorColor), lineWidth: 2)
+            // All walls, then every door opening cut through all of them.
+            context.drawLayer { wallCtx in
+                for p in placed {
+                    let c = inRoomFrame(wallCtx, p)
+                    c.fill(FloorplanDrawing.walls(p.rects, thickness: t), with: .color(FloorplanDrawing.wallColor))
                 }
+                for p in placed {
+                    var c = inRoomFrame(wallCtx, p)
+                    FloorplanDrawing.cutOpenings(&c, p.doors)
+                }
+            }
+            for p in placed {
+                FloorplanDrawing.drawLeaves(inRoomFrame(context, p), p.doors)
+            }
+
+            // Measurements, in plan coordinates so the text always reads upright.
+            func worldBox(_ room: Room) -> CGRect {
+                let b = FloorplanGeometry.bounds(of: FloorplanGeometry.worldRects(for: room))
+                return CGRect(x: origin.x + b.minX * ppm, y: origin.y + b.minY * ppm, width: b.width * ppm, height: b.height * ppm)
+            }
+            if let id = selectedRoomID {
+                if let room = shown.first(where: { $0.persistentModelID == id }) {
+                    FloorplanDrawing.drawDimensions(context, box: worldBox(room), scale: ppm, thickness: t)
+                }
+            } else if excludedRoomID == nil, !shown.isEmpty {
+                let box = shown.dropFirst().reduce(worldBox(shown[0])) { $0.union(worldBox($1)) }
+                FloorplanDrawing.drawDimensions(context, box: box, scale: ppm, thickness: t)
+            }
+            _ = size
+        }
+        .frame(width: canvasSize.width, height: canvasSize.height)
+        .allowsHitTesting(false)
+    }
+}
+
+/// Up to six dots, one per item in the room, then "+n".
+struct AssetCountDots: View {
+    let count: Int
+    var body: some View {
+        HStack(spacing: 2.5) {
+            ForEach(0..<min(count, 6), id: \.self) { _ in
+                Circle().fill(Color(red: 0.6, green: 0.75, blue: 1.0).opacity(0.9)).frame(width: 4, height: 4)
+            }
+            if count > 6 {
+                Text("+\(count - 6)")
+                    .font(.system(size: 7, weight: .bold))
+                    .foregroundColor(Color(red: 0.6, green: 0.75, blue: 1.0).opacity(0.9))
             }
         }
+        .accessibilityLabel("\(count) item\(count == 1 ? "" : "s")")
+    }
+}
+
+/// A scale bar for the plan at the current zoom.
+struct FloorplanScaleBar: View {
+    let zoom: CGFloat
+    private let ppm = FloorplanGeometry.pointsPerMetre
+
+    private var metres: CGFloat {
+        let options: [CGFloat] = [0.25, 0.5, 1, 2, 5, 10, 20]
+        return options.first { $0 * ppm * zoom >= 40 } ?? 20
+    }
+
+    var body: some View {
+        let length = metres * ppm * zoom
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(spacing: 0) {
+                Rectangle().fill(Color.white.opacity(0.85)).frame(width: length / 2, height: 4)
+                Rectangle().fill(Color.white.opacity(0.25)).frame(width: length / 2, height: 4)
+            }
+            .overlay(Rectangle().stroke(Color.white.opacity(0.85), lineWidth: 0.8))
+            Text(metres < 1 ? "\(Int(metres * 100)) cm" : "\(metres == metres.rounded() ? String(Int(metres)) : String(format: "%.1f", Double(metres))) m")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundColor(.white.opacity(0.8))
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(BlurView(style: .systemUltraThinMaterialDark))
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .allowsHitTesting(false)
     }
 }
 
@@ -1750,6 +1890,12 @@ struct RoomDetailView: View {
     @State private var showingEditRoom = false
     @State private var showingLinkAssets = false
     @State private var showingLinkDocuments = false
+    @State private var showingAddPlan = false
+    @State private var showingAddLog = false
+    @State private var showingAddTask = false
+    @State private var linkingProjects = false
+
+    @Query(sort: \Project.title) private var allProjects: [Project]
 
     private let labelColor = Color(red: 0.5, green: 0.45, blue: 0.6)
 
@@ -1759,11 +1905,37 @@ struct RoomDetailView: View {
         let direct = Set(room.documents.map { $0.persistentModelID })
         return room.assets.flatMap { $0.documents }.filter { !direct.contains($0.persistentModelID) }
     }
+    /// Maintenance logged against the room itself or against anything in it.
     private var maintenance: [Maintenance] {
-        room.assets.flatMap { $0.maintenanceRecords }.sorted { $0.date > $1.date }
+        var seen = Set<PersistentIdentifier>()
+        return (room.maintenanceRecords + room.assets.flatMap { $0.maintenanceRecords })
+            .filter { seen.insert($0.persistentModelID).inserted }
+            .sorted { $0.date > $1.date }
+    }
+    /// Repeating maintenance for the room itself or for anything in it.
+    private var plans: [MaintenancePlan] {
+        var seen = Set<PersistentIdentifier>()
+        return (room.maintenancePlans + room.assets.flatMap { $0.maintenancePlans })
+            .filter { seen.insert($0.persistentModelID).inserted }
+            .sorted { $0.nextDueDate < $1.nextDueDate }
     }
     private var warranties: [Warranty] {
         room.assets.flatMap { $0.warranties }.sorted { $0.expiryDate < $1.expiryDate }
+    }
+    /// Projects linked to the room, plus projects linked to anything in it.
+    private var projects: [Project] {
+        var seen = Set<PersistentIdentifier>()
+        return (room.projects + room.assets.flatMap { $0.projects })
+            .filter { seen.insert($0.persistentModelID).inserted }
+            .sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
+    }
+    /// Jobs for the room or for anything in it, leaving out finished one-off jobs.
+    private var jobs: [HomeTask] {
+        var seen = Set<PersistentIdentifier>()
+        return (room.tasks + room.assets.flatMap { $0.tasks })
+            .filter { seen.insert($0.persistentModelID).inserted }
+            .filter { !($0.repeatRule == .none && $0.isDone) }
+            .sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
     }
 
     var body: some View {
@@ -1780,7 +1952,7 @@ struct RoomDetailView: View {
                             .tracking(4)
                             .lineLimit(2)
                             .minimumScaleFactor(0.6)
-                        Text("\(room.floorDisplay.uppercased()) · \(String(format: "%.1f × %.1f M", room.width, room.height)) · \(String(format: "%.1f", room.width * room.height)) M²")
+                        Text("\(room.floorDisplay.uppercased()) · \(room.parts.isEmpty ? String(format: "%.1f × %.1f M · ", room.width, room.height) : "")\(String(format: "%.1f", room.area)) M²")
                             .font(.system(size: 12, weight: .medium))
                             .foregroundColor(Color(red: 0.55, green: 0.5, blue: 0.65))
                             .tracking(2)
@@ -1859,8 +2031,10 @@ struct RoomDetailView: View {
                         }
                     }
 
-                    if !warranties.isEmpty {
-                        section(title: "Warranties (\(warranties.count))") {
+                    section(title: "Warranties (\(warranties.count))") {
+                        if warranties.isEmpty {
+                            emptyText("No warranties on items in this room.")
+                        } else {
                             ForEach(warranties) { warranty in
                                 NavigationLink(destination: WarrantyDetailView(warranty: warranty)) {
                                     WarrantyRow(warranty: warranty)
@@ -1870,13 +2044,53 @@ struct RoomDetailView: View {
                         }
                     }
 
-                    if !maintenance.isEmpty {
-                        section(title: "Maintenance (\(maintenance.count))") {
+                    // Maintenance plans (repeating), for the room and what's in it
+                    section(title: "Maintenance plans (\(plans.count))", addLabel: "Add", onAdd: { showingAddPlan = true }) {
+                        if plans.isEmpty {
+                            emptyText("No repeating maintenance here.")
+                        } else {
+                            ForEach(plans) { plan in PlanRow(plan: plan) }
+                        }
+                    }
+
+                    // Maintenance history
+                    section(title: "Maintenance history (\(maintenance.count))", addLabel: "Log", onAdd: { showingAddLog = true }) {
+                        if maintenance.isEmpty {
+                            emptyText("Nothing logged yet.")
+                        } else {
                             ForEach(maintenance) { record in
                                 NavigationLink(destination: MaintenanceDetailView(maintenance: record)) {
                                     MaintenanceRow(maintenance: record)
                                 }
                                 .buttonStyle(PlainButtonStyle())
+                            }
+                        }
+                    }
+
+                    // Projects
+                    section(title: "Projects (\(projects.count))", addLabel: "Link", onAdd: { linkingProjects = true }) {
+                        if projects.isEmpty {
+                            emptyText("No projects in this room.")
+                        } else {
+                            ForEach(projects) { project in
+                                LinkRow(icon: "hammer.fill", tint: VoidPalette.projects, title: project.title,
+                                        subtitle: room.projects.contains(where: { $0 === project }) ? project.status.rawValue : "\(project.status.rawValue) · via an item here") {
+                                    ProjectDetailView(project: project)
+                                }
+                            }
+                        }
+                    }
+
+                    // To-Do jobs (never shown as late)
+                    section(title: "Jobs (\(jobs.count))", addLabel: "Add", onAdd: { showingAddTask = true }) {
+                        if jobs.isEmpty {
+                            emptyText("No jobs for this room.")
+                        } else {
+                            ForEach(jobs) { task in
+                                LinkRow(icon: task.repeatRule == .none ? "circle" : "repeat", tint: VoidPalette.todo, title: task.title,
+                                        subtitle: [task.scheduleSummary, task.room == nil ? task.asset?.name : nil].compactMap { $0 }.joined(separator: " · ")) {
+                                    TaskDetailView(task: task)
+                                }
                             }
                         }
                     }
@@ -1890,6 +2104,16 @@ struct RoomDetailView: View {
         .sheet(isPresented: $showingAddAsset) { AddAssetView(initialRoom: room) }
         .sheet(isPresented: $showingAddDocument) { AddDocumentView(initialRoom: room) }
         .sheet(isPresented: $showingEditRoom) { EditRoomView(room: room) }
+        .sheet(isPresented: $showingAddPlan) { EditPlanSheet(plan: nil, presetRoom: room) }
+        .sheet(isPresented: $showingAddLog) { EditMaintenanceLogSheet(record: nil, presetRoom: room) }
+        .sheet(isPresented: $showingAddTask) { EditTaskSheet(task: nil, presetRoom: room) }
+        .sheet(isPresented: $linkingProjects) {
+            MultiLinkSheet(title: "Projects", options: allProjects, label: { $0.title },
+                           isLinked: { p in room.projects.contains { $0 === p } },
+                           toggle: { p in
+                               if let i = room.projects.firstIndex(where: { $0 === p }) { room.projects.remove(at: i) } else { room.projects.append(p) }
+                           })
+        }
         .sheet(isPresented: $showingLinkAssets) {
             LinkPickerSheet(title: "Move assets here", items: unassignedAssets.map { LinkPickerItem(id: $0.persistentModelID, title: $0.name, subtitle: $0.location.isEmpty ? $0.category : "\($0.category) · \($0.location)") }) { ids in
                 for asset in allAssets where ids.contains(asset.persistentModelID) { asset.room = room }
