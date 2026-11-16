@@ -22,7 +22,7 @@ All data is **local only** (SwiftData on the device, files in the app's Document
 
 ## 3. Platform & Toolchain
 
-- iOS 17.0 deployment target, Swift, no third-party dependencies.
+- iOS 17.0 deployment target, Swift. Swift packages: firebase-ios-sdk (FirebaseCore, FirebaseAuth, FirebaseFirestore, FirebaseStorage) and GoogleSignIn-iOS. The app still works solo with no account.
 - SwiftUI, SwiftData, NavigationStack, VisionKit (document camera), Vision (OCR), PDFKit, PhotosUI, UserNotifications, RoomPlan (LiDAR room scanning, behind `#if canImport(RoomPlan)` and `RoomScanner.isSupported`).
 - Forced dark UI (`.preferredColorScheme(.dark)`).
 - CI: `.github/workflows/ios-build.yml` builds the app for the iOS Simulator SDK (no signing) on `macos-latest` for every push to `wire-up-everything`, and reports compiled files, warnings and errors as annotations. It does not run the app or any tests (there are none).
@@ -37,10 +37,12 @@ VoidHomeOS/
 └── VoidHomeOS/
     ├── VoidHomeOSApp.swift     # @main, schema, safe store opening, backup, banner
     ├── Info.plist              # camera, photo library, documents usage strings
+    ├── GoogleService-Info.plist, VoidHomeOS.entitlements (Sign in with Apple)
+    ├── Sync/                   # shared households on Firebase (section 15)
     ├── Models/                 # SwiftData @Model classes (see section 6)
     │   Asset, Bill (+BillPayment), Document, Door, Floor, Home,
     │   HomeTask (+TaskChecklistItem, TaskCompletion), Maintenance,
-    │   MaintenancePlan (+ProjectPhoto), Person, Project, Room (+FloorplanGeometry), RoomPart, Warranty
+    │   MaintenancePlan (+ProjectPhoto), Person, Project, ProjectSpend, Room (+FloorplanGeometry), RoomPart, Warranty
     ├── Services/
     │   ├── TodoFeed.swift              # builds To-Do rows and history from live records
     │   ├── NotificationService.swift   # local reminders
@@ -144,10 +146,10 @@ Cosmic glass look: `StarryBackground`, muted per-module tints in `VoidPalette` (
 
 - Nothing on this branch has been run in a simulator or on a phone by the AI; only CI compile checks have passed.
 - Lightweight migration and the backup path have not been tested against the user's real saved data.
-- Assigning jobs to a person only works on this phone; nothing syncs.
+- Shared households (section 15) compile in CI, and the Firestore rules passed emulator tests, but sign-in, joining and multi-device sync have not been run on a phone.
 - No tests, no ViewModels (logic lives in views and `TodoFeed`).
 - Compiler warnings: missing `AccentColor` asset, deprecated `contentEdgeInsets` in `RoomScannerService`, and a retroactive `Identifiable` conformance on `URL` in `DocumentsListView`.
-- Not built: barcode scanning, Spotlight, export, iCloud sync, shared homes, Watch app.
+- Not built: barcode scanning, Spotlight, export, Watch app, Android app (contract in section 15).
 
 ## 12. Build & Run
 
@@ -167,3 +169,153 @@ Pick an iOS 17+ simulator and press Cmd+R. LiDAR scanning needs a Pro iPhone or 
 ## 14. License
 
 Proprietary — all rights reserved (per README).
+
+## 15. Shared households (Firebase) — contract for iOS and Android
+
+This section is the contract between the iOS app and the planned native Android app
+(Kotlin / Jetpack Compose). Both talk to the same Firebase project with no server code.
+Android must follow it exactly; anything not listed here is iOS-local.
+
+### 15.1 Firebase project
+
+- Project ID: `void-home-app` (display name "Void Home"). Firestore `(default)` database, Native mode, region `europe-west2` (London).
+- iOS app: bundle `com.void.homeos`, team `T963633DC5`, config in `VoidHomeOS/GoogleService-Info.plist` (client config only, no secrets).
+- Android app: register package name + SHA-1/SHA-256 in the Firebase console, download `google-services.json`. Google sign-in on Android uses the **Web client ID** (`default_web_client_id`) with Credential Manager, then `GoogleAuthProvider.getCredential(idToken, null)`.
+- Sign-in providers: **Apple** and **Google** (Firebase Auth). Either account type can create or join a house. There is no anonymous or email/password sign-in. Android can offer Sign in with Apple through `OAuthProvider("apple.com")` once the Apple Services ID is set up; Google is the expected Android route.
+- Rules live in the repo: `firebase/firestore.rules`, `firebase/storage.rules` (`firebase.json`, `.firebaserc`). Deploy with `firebase deploy --only firestore:rules,storage`.
+- Offline: iOS uses Firestore's persistent cache (200 MB). Android should keep the default persistent cache on. Conflict policy is **last write wins** per document.
+
+### 15.2 Collections
+
+```
+users/{uid}
+  displayName: string
+  email: string
+  houseId: string            // absent when not in a house
+  updatedAt: timestamp
+
+invites/{code}               // code = 6 chars from ABCDEFGHJKMNPQRSTUVWXYZ23456789
+  houseId: string
+  createdBy: uid
+  createdAt: timestamp
+
+houses/{houseId}             // auto ID
+  name: string
+  ownerId: uid
+  memberIds: [uid]           // the access list used by the rules
+  members: { uid: { name: string, joinedAt: timestamp } }
+  inviteCode: string         // the one current code; "" disables joining
+  joinCode: string           // written by a joiner; must equal inviteCode (see 15.4)
+  createdAt, updatedAt: timestamp
+
+houses/{houseId}/items/{syncId}                   // "Everyone" records
+houses/{houseId}/private/{uid}/items/{syncId}     // "Just me" records of that uid
+```
+
+Every record document (both paths) has the same envelope:
+
+| field | type | meaning |
+|---|---|---|
+| `type` | string | record type, table below |
+| `syncId` | string | same as the document ID; a UUID string (member people use `member-<uid>`) |
+| `visibility` | string | `"house"` or `"me"`, matches the path |
+| `deleted` | bool | tombstone; `true` means delete locally. `data` is then `{}` |
+| `createdBy` | uid | who first made it (only they may change Just me / Everyone) |
+| `updatedBy` | uid | last writer; **must equal the writer's uid** (rules) |
+| `updatedAt` | timestamp | `serverTimestamp()` on every write |
+| `data` | map | the record's fields, below |
+
+Rules for `data`:
+- Field names are exactly the property names below.
+- Dates are Firestore `timestamp`. Optional fields are `null` when empty.
+- To-one links are `<name>Id: syncId | null`. To-many links are `<name>Ids: [syncId]` (sorted).
+- Enums are their raw strings. Money is a plain number in the phone's currency.
+- Split maps are **JSON strings** (`sharesJSON`, `repaidJSON`, `customSharesJSON`), e.g. `"{\"uidA\":12.5,\"uidB\":12.5}"`.
+- Readers must ignore unknown fields and keep their local value for missing fields.
+- Moving a record between Everyone and Just me = write a tombstone at the old path and the full record at the new path.
+- A deleted record is never removed from Firestore, only tombstoned, so offline phones learn about it.
+
+### 15.3 Record types and fields (`type` → `data`)
+
+Visibility column: **always** = always in `items` (shared); **own** = has its own Just me / Everyone choice; **follows X** = lives wherever its parent X lives.
+
+| type | visibility | data fields |
+|---|---|---|
+| `home` | always | name, address, createdAt |
+| `floor` | always | name, floorNumber(int), createdAt, homeId |
+| `room` | always | name, floor, floorNumber(int), width, height (metres), dimensions, rotation (0/90/180/270), createdAt, xPosition, yPosition, planX?, planY? (metres), ownerUid ("" = shared room; else whose bedroom), homeId |
+| `roomPart` | always | name, width, height, xOffset, yOffset, createdAt, roomId |
+| `door` | always | edge (top/bottom/left/right raw), position (0–1), opensLeft, opensInward, isDoubleDoor, createdAt, roomId, partId |
+| `person` | own | name, company, role, phoneNumber, email, notes, createdAt, kindRaw (household/tradesperson/provider), memberUid (set = real account, "Member" badge) |
+| `asset` | own | name, category, manufacturer, model, serialNumber, purchaseDate?, purchasePrice, location, notes, createdAt, photoFileName?, homeId, roomId |
+| `project` | own | title, projectDescription, startDate?, endDate?, budget, actualCost (house spending total), status (raw), notes, createdAt, homeId, contractorsIds, roomsIds, assetsIds |
+| `warranty` | follows asset | provider, startDate, expiryDate, notes, createdAt, remindersEnabled, claimContact, assetId |
+| `maintenancePlan` | follows asset | title, intervalValue(int), intervalUnitRaw, nextDueDate, lastDoneDate?, timeOfDayRaw, notes, remindersEnabled, isPaused, createdAt, assetId, roomId, personId |
+| `maintenance` | follows plan, else asset | task, date, cost, notes, createdAt, remindersEnabled, assetId, roomId, personId, planId |
+| `bill` | own | name, categoryRaw, amount, isEstimate, frequencyRaw, nextDueDate, paymentMethod, contractEndDate?, notes, remindersEnabled, isSettled, createdAt, splitModeRaw ("equal"/"custom"), customSharesJSON ({uid: percent}), providerId |
+| `billPayment` | follows bill | amount, paidDate, dueDate, note, paidByUid, sharesJSON ({uid: amount}), repaidJSON ({uid: ISO date}), billId |
+| `task` | own | title, notes, timeOfDayRaw, startDate?, repeatRaw, weekdaysRaw, isDone, createdAt, assigneeId (person), projectId, roomId, assetId |
+| `checklistItem` | follows task | title, order(int), createdAt, checkedOn?, taskId |
+| `taskCompletion` | follows task | occurrenceDate, completedAt, note, photoFileName?, completedByUid, personId, taskId |
+| `document` | own (new ones default to Just me) | title, type (DocumentType raw), fileURL (file **name** only), ocrText, createdAt, expiryDate?, warrantyId, billId, projectId, maintenanceId, assetId, roomId |
+| `projectPhoto` | follows project | fileName, isAfter, caption, createdAt, projectId |
+| `projectSpend` | own (Just me only allowed on a house project; follows project if the project is Just me) | amount, note, date, paidByUid, sharesJSON, repaidJSON, createdAt, projectId |
+
+Apply order for a batch (parents first): home, floor, room, roomPart, door, person, asset, project, warranty, maintenancePlan, maintenance, bill, billPayment, task, checklistItem, taskCompletion, document, projectPhoto, projectSpend. Apply all fields first, links second.
+
+What each viewer sees: Home, Timeline, Search, To-Do etc. show everything in `items` plus that viewer's own `private/{uid}/items`. A link to a record the viewer can't see resolves to nothing.
+
+### 15.4 Invite and join flow
+
+1. **Sign in** (Apple or Google). Write `users/{uid}` `{displayName, email, updatedAt}` with merge.
+2. **Create house** (owner). One batch:
+   - `houses/{newId}`: `{name, ownerId: uid, memberIds: [uid], members: {uid: {name, joinedAt}}, inviteCode: CODE, createdAt, updatedAt}`
+   - `invites/{CODE}`: `{houseId, createdBy: uid, createdAt}`
+   then `users/{uid}.houseId = newId`. The phone's existing local data is backed up and then uploaded to `items` / `private` by the sync engine. Nothing local is deleted.
+3. **Join** (anyone signed in):
+   - `get invites/{CODE}` from the server → `houseId` (list is denied, so codes can't be enumerated).
+   - `update houses/{houseId}`: `memberIds: arrayUnion(uid)`, `members.<uid>: {name, joinedAt}`, `joinCode: CODE`, `updatedAt`. The rules accept this only if `joinCode == inviteCode` and nothing else changes.
+   - Then `users/{uid}.houseId = houseId`. iOS backs up the joiner's local store, clears it, and loads the house.
+4. **New code** (owner only). One batch: delete `invites/{OLD}`, create `invites/{NEW}`, set `houses/{id}.inviteCode = NEW`. The old code stops working at once.
+5. **Remove member** (owner): `memberIds: arrayRemove(uid)`, `members.<uid>: delete()`. The removed phone's listener gets permission-denied; after three server denials it backs up, deletes house records locally, keeps its own Just me records, and clears `users/{uid}.houseId`.
+6. **Hand over ownership** (owner): set `ownerId` to another member's uid.
+7. **Leave** (member): remove self from `memberIds` and `members`. An owner must hand over first; an owner alone may close the house (delete `invites/{code}` and `houses/{id}`), keeping all data locally.
+8. Every member also appears as a `person` record with `syncId = member-<uid>`, `kindRaw = household`, `memberUid = uid` (fixed ID, so two phones never make duplicates).
+
+### 15.5 Security rules (summary of `firebase/firestore.rules`)
+
+- `users/{uid}`: read/write only by that uid.
+- `invites/{code}`: `get` by any signed-in user, no `list`. Create only by the house owner, and only for the house's current `inviteCode` (checked with `getAfter`, so it works in the create batch). Delete by the owner, or by anyone once the house is gone. No updates.
+- `houses/{id}`: `get` only by members, no `list`. Create only as sole member and owner. Update:
+  - owner: anything, as long as `ownerId` stays in `memberIds`;
+  - member: only `name`, `address`, `updatedAt`, their own `members.<uid>` entry, or removing themselves;
+  - non-member: join only (adds just themselves, `joinCode == inviteCode`, `inviteCode` non-empty, nothing else).
+  Delete only by the owner.
+- `houses/{id}/items/{syncId}`: members read and write; `updatedBy` must be the writer and `syncId` must equal the document ID.
+- `houses/{id}/private/{uid}/items/{syncId}`: only that uid, while a member. Not even the owner can read it.
+- Storage (`firebase/storage.rules`): `houses/{id}/files/{syncId}/{name}` for members; `houses/{id}/private/{uid}/files/{syncId}/{name}` for that uid only; 25 MB per file.
+
+The rules were tested on the Firestore emulator with `@firebase/rules-unit-testing` (create, join with right/wrong/old code, privacy of Just me records, owner tools, leaving, removal).
+
+### 15.6 Files (photos and scans)
+
+Photos (`photoFileName`, `fileName`) and scanned documents (`fileURL`) are uploaded to Firebase Storage at the paths above, using the record's `syncId` and the file name. Phones download missing files when the record arrives. **Firebase Storage needs the Blaze (pay-as-you-go) plan on new projects.** Until Storage is enabled, records sync but photos and scans stay on the phone that made them, and the house screen says so.
+
+### 15.7 Bills: split and who owes who
+
+- `bill.visibility = me`: private, counts fully towards that person's totals only.
+- `bill.visibility = house`: split between **current** members. `splitModeRaw = "equal"`, or `"custom"` with `customSharesJSON` percentages (normalised over current members; one person at 100 covers it).
+- "I paid this" (ticking the bill) creates a `billPayment` with `paidByUid = me` and `sharesJSON` fixed at that moment, so membership changes only affect later payments.
+- Each other member owes `paidByUid` their share until it is in `repaidJSON` (either the payer or the debtor can tick it).
+- "Who owes who" nets all unrepaid shares (bills and house `projectSpend`) pairwise.
+- A shared bill is overdue only while the provider is unpaid (`nextDueDate` passed). Owing a share is shown neutrally, never red.
+- Monthly total and "paid this month" use the viewer's share for shared bills.
+
+### 15.8 iOS implementation
+
+- `Sync/HouseStore.swift` — Firebase setup, Apple/Google sign-in, create/join/leave/remove/hand over, member people.
+- `Sync/SyncEngine.swift` — listeners on `items` and `private/{uid}/items`; pushes local changes every 4 s and when the app leaves the foreground; Storage upload/download.
+- `Sync/SyncCore.swift`, `Sync/SyncRecords.swift` (generated by `python3 tools/gen_sync_records.py`; edit the model list there, then regenerate) — the field mapping above.
+- `Sync/BillSplit.swift`, `Sync/SharingViews.swift` (Just me / Everyone field, bill split fields, Who owes who card, House screen, Whose room field), `Sync/HouseContext.swift`.
+- Change detection: each model has `syncId`, `visibilityRaw`, `createdBy`, `updatedBy`, `syncHash` (fingerprint of the last synced fields) and `syncScope`. A record whose fingerprint differs from `syncHash` is pushed. An incoming change is skipped for a record with an unpushed local edit (that edit is pushed next, so the last write to reach the server wins). Deletions are found by comparing with the IDs synced before; if the local store is completely empty the engine refuses to send deletions.
+- Sync never runs on the temporary in-memory store used after a failed store open.
