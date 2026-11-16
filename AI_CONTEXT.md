@@ -1,260 +1,169 @@
-# VoidHomeOS — Full Project Rundown for AI Assistants
+# VoidHomeOS — Project Rundown for AI Assistants
+
+This file describes the code on the `wire-up-everything` branch as it actually is. Check the code before relying on anything here; update this file when you change behaviour.
 
 ## 1. What This App Is
 
-**VoidHomeOS** (branded "Void Home OS") is a premium, native iOS app for organizing the memory of a home. It treats a home as a connected graph of real-world objects: rooms, assets, documents, warranties, maintenance records, people, and projects. It is *not* a notes app, file manager, or smart-home controller — it is a structured home inventory + history system.
+**VoidHomeOS** ("Void Home") is a native iOS app that keeps the memory of a home: rooms and a floor plan, assets, documents, warranties, maintenance, projects, people, bills and a household To-Do list. Everything links to everything else, and every detail page has a "Linked" section that goes both ways.
 
-**Vision statement:** "A home has thousands of important details, but no memory. Void Home OS becomes the organised memory of the home."
+All data is **local only** (SwiftData on the device, files in the app's Documents folder). There is no account, no sync, no bank connection and nothing is ever paid from the app.
 
-**Target feel:** "Apple created a system for managing your home." Minimal, calm, premium, intentional — inspired by Apple hardware design and Nothing's minimalism.
+## 2. Product rules that must be kept
 
-## 2. Platform & Toolchain
+1. **Only bills can ever be overdue or red.** Cleaning, maintenance, project jobs and every other non-bill job stay neutral everywhere (To-Do, Home, Timeline, Search, notifications). No lateness labels, no scores, no streaks.
+   - A repeating job that is missed simply drops off; it never piles up.
+   - An unfinished one-off job stays quietly on today's list.
+   - A maintenance plan past its date shows on today as "Whenever suits".
+   - `VoidPalette.billOverdue` is the only red, and it is only used for `Bill.isOverdue`.
+2. **To-Do never copies records.** Only manual and project jobs are stored as `HomeTask`. Bills, maintenance plans, warranty expiries and document expiries are read live from their own records by `TodoFeed`. Ticking a bill records a `BillPayment` and moves its due date on; ticking a plan writes a `Maintenance` log and sets the next date; unticking undoes both.
+3. **Timeline and Search store nothing.** Both are built on the fly from existing records.
+4. **Never wipe saved data.** See section 5 (migration and backup).
+5. Deleting a project never deletes people.
 
-- iOS 17.0+ (some features gated at iOS 16.0 via `@available`)
-- Xcode 15.0+, Swift 5.0+
-- Pure Apple frameworks — no third-party dependencies:
-  - **SwiftUI** — declarative UI
-  - **SwiftData** — persistence (Core Data replacement)
-  - **NavigationStack** — navigation
-  - **VisionKit** (`VNDocumentCameraViewController`) — document scanning
-  - **Vision** (`VNRecognizeTextRequest`) — OCR
-  - **PhotosUI** — photo picker
-  - **UserNotifications** — local reminders
-  - **RoomPlan** — referenced in README but currently **stubbed out** (import commented out in `RoomScannerService.swift`)
-- Force-dark UI: `.preferredColorScheme(.dark)` at the app root.
+## 3. Platform & Toolchain
 
-## 3. Project Structure
+- iOS 17.0 deployment target, Swift, no third-party dependencies.
+- SwiftUI, SwiftData, NavigationStack, VisionKit (document camera), Vision (OCR), PDFKit, PhotosUI, UserNotifications, RoomPlan (LiDAR room scanning, behind `#if canImport(RoomPlan)` and `RoomScanner.isSupported`).
+- Forced dark UI (`.preferredColorScheme(.dark)`).
+- CI: `.github/workflows/ios-build.yml` builds the app for the iOS Simulator SDK (no signing) on `macos-latest` for every push to `wire-up-everything`, and reports compiled files, warnings and errors as annotations. It does not run the app or any tests (there are none).
+
+## 4. Project Structure
 
 ```
 VoidHomeOS/
-├── README.md
-├── .clineignore
+├── AI_CONTEXT.md, README.md
+├── .github/workflows/ios-build.yml
 ├── VoidHomeOS.xcodeproj/
 └── VoidHomeOS/
-    ├── VoidHomeOSApp.swift          # @main entry, ModelContainer setup, notif auth
-    ├── Info.plist                   # Camera / Photo Library / Documents usage strings
-    ├── LaunchScreen.storyboard
-    ├── Assets.xcassets/
-    ├── Models/                      # 8 SwiftData @Model classes
-    │   ├── Home.swift
-    │   ├── Room.swift
-    │   ├── Asset.swift
-    │   ├── Document.swift
-    │   ├── Warranty.swift
-    │   ├── Maintenance.swift
-    │   ├── Person.swift
-    │   └── Project.swift
-    ├── Views/                       # SwiftUI screens (12 files)
-    │   ├── HomeScreen.swift         # Launcher grid + HomeDetailView + PlaceholderView
-    │   ├── RoomsListView.swift      # Floorplan + list modes (616 lines, largest view)
-    │   ├── AssetsListView.swift
-    │   ├── DocumentsListView.swift
-    │   ├── WarrantiesListView.swift
-    │   ├── MaintenanceListView.swift
-    │   ├── PeopleListView.swift
-    │   ├── ProjectsListView.swift   # 903 lines — projects + contractors
-    │   ├── TimelineView.swift
-    │   ├── SearchView.swift         # Global cross-entity search
-    │   └── SharedViews.swift        # Canonical glass components (610 lines)
+    ├── VoidHomeOSApp.swift     # @main, schema, safe store opening, backup, banner
+    ├── Info.plist              # camera, photo library, documents usage strings
+    ├── Models/                 # SwiftData @Model classes (see section 6)
+    │   Asset, Bill (+BillPayment), Document, Door, Floor, Home,
+    │   HomeTask (+TaskChecklistItem, TaskCompletion), Maintenance,
+    │   MaintenancePlan (+ProjectPhoto), Person, Project, Room (+FloorplanGeometry), RoomPart, Warranty
     ├── Services/
-    │   ├── DocumentScannerService.swift   # VisionKit wrapper
-    │   ├── OCRService.swift               # Vision OCR + receipt parsing
-    │   ├── NotificationService.swift      # UNUserNotificationCenter singleton
-    │   └── RoomScannerService.swift       # STUB — RoomPlan not wired in
-    ├── ViewModels/                  # Empty — MVVM in name only; logic lives in views
-    └── Resources/                   # Empty
+    │   ├── TodoFeed.swift              # builds To-Do rows and history from live records
+    │   ├── NotificationService.swift   # local reminders
+    │   ├── OCRService.swift            # Vision text recognition + receipt reader
+    │   ├── DocumentScannerService.swift # VisionKit scanner + DocumentStorage (files)
+    │   └── RoomScannerService.swift    # RoomPlan capture -> RoomScanSummary
+    └── Views/
+        HomeScreen (launcher + dock), HomeDashboardView, TodoView, BillsView,
+        RoomsListView (floor plan + room pages), RoomShapeEditor, AssetsListView,
+        DocumentsListView, WarrantiesListView, MaintenanceListView, ProjectsListView,
+        PeopleListView, TimelineView, SearchView, SharedViews, VoidUI
 ```
 
-Total: ~6,260 lines of Swift across 23 source files.
+## 5. App Entry, Migration and Backup
 
-## 4. App Entry Point
+`VoidHomeOSApp` declares one `Schema` with every model. Every field added since the first release has a default value or is optional, so SwiftData migrates the existing store in place (lightweight migration). There is no `VersionedSchema`/`SchemaMigrationPlan`.
 
-`VoidHomeOSApp.swift`:
-- Builds a `ModelContainer` with the schema of all 8 models (`isStoredInMemoryOnly: false`).
-- On launch, requests notification authorization via `NotificationService.shared.requestAuthorization()` in a `Task`.
-- Root scene: `HomeScreen()` injected with the model container, forced to dark color scheme.
-- Fatal-asserts if the container can't be created (will crash on schema mismatch — no migration handling beyond default-value fields).
+If the store still fails to open, the app **does not delete it**: `StoreBackup.copyStore` copies the SQLite file and its `-wal`/`-shm` side files to `Documents/Backup-<date>` (visible in Files › Void Home), the app runs on an empty in-memory store, and `StoreProblemBanner` tells the user that nothing they change will be kept and where the backup is. This has not been tested against a real old store.
 
-## 5. Data Model (SwiftData)
+Rules for schema changes: give every new stored property a default or make it optional; never rename or remove a stored property without a proper migration plan; never add code that deletes the store.
 
-All models use `@Model final class`. Relationships use `@Relationship(deleteRule:)`.
+A default "My Home" is created on first launch if none exists.
 
-### Home
-- `name`, `address`, `createdAt`
-- Cascade relationships to `rooms: [Room]`, `assets: [Asset]`, `projects: [Project]`
-- A single default "My Home" is auto-created on first launch if none exists.
+## 6. Data Model (SwiftData)
 
-### Room
-- `name`, `floorNumber: Int` (0 = Ground, 1 = 1st Floor, -1 = Basement), `width`/`height: Double` (meters, defaults 3.0×4.0), `rotation: Double` (degrees), `xPosition`/`yPosition: Double` (normalized 0–1 for floorplan placement)
-- Legacy string fields `floor` and `dimensions` kept populated for migration safety
-- Computed: `floorDisplay`, `dimensionsDisplay` ("3.0m x 4.0m")
-- `home: Home?` (nullify on delete), `assets: [Asset]` (cascade)
+All models are `@Model final class`. Enums are stored as raw strings (`...Raw`) with computed accessors where they were added later.
 
-### Asset
-- `name`, `category`, `manufacturer`, `model`, `serialNumber`, `purchaseDate: Date?`, `purchasePrice: Double`, `location`, `notes`, `createdAt`
-- `home: Home?` and `room: Room?` (both nullify)
-- Cascade to `documents: [Document]`, `warranties: [Warranty]`, `maintenanceRecords: [Maintenance]`
+- **Home** — `name`, `address`. Cascades to `rooms`, `assets`, `projects`, `floors`.
+- **Floor** — `name`, `floorNumber` (0 Ground, 1 1st, -1 Basement).
+- **Room** — `name`, `floorNumber`, `width`/`height` (metres), `rotation` (degrees, used in quarter turns), `planX`/`planY` (centre in metres from the plan origin; legacy `xPosition`/`yPosition` are migrated once). Links: `assets`, `documents`, `projects`, `tasks`, `maintenanceRecords`, `maintenancePlans`, `parts` (cascade), `doors` (cascade). `area` is the union area of all pieces.
+- **RoomPart** — extra rectangle of an L/T/U-shaped room: `name`, `width`, `height`, `xOffset`, `yOffset` (from room centre), its own `doors`.
+- **Door** — `edge` (top/bottom/left/right), `position` (0–1 along the edge), `opensLeft` (hinge at the left/top end), `opensInward`, `isDoubleDoor`; belongs to a `room` and optionally a `part`.
+- **Asset** — name, category, manufacturer, model, serial number, purchase date/price, location, notes, `photoFileName`. Links: `room`, `documents`, `warranties` (cascade), `maintenanceRecords` (cascade), `maintenancePlans`, `projects`, `tasks`.
+- **Document** — `title`, `type` (Manual, Receipt, Invoice, Certificate, Guarantee, Other), `fileURL` (file name in `Documents/UploadedDocuments`), `ocrText`, optional `expiryDate`. Links: `asset`, `room`, `warranty`, `bill`, `project`, `maintenance`.
+- **Warranty** — provider, start/expiry dates, notes, `claimContact`, `documents`, `asset`. `status`: Active, Ending soon (60 days), Expired.
+- **Maintenance** (log entry) — `task`, `date`, `cost`, notes, `asset` or `room`, `person`, `plan`, `documents`.
+- **MaintenancePlan** (repeating) — `title`, interval value + unit, `nextDueDate`, `lastDoneDate`, time of day, notes, `isPaused`, `asset` or `room`, `person`, `logs`.
+- **Project** — title, description, start/end dates, budget, actual cost, status (Planned, In Progress, Completed, On Hold), notes. Links: `contractors` (nullify), `rooms`, `assets`, `documents`, `tasks` (cascade), `photos` (`ProjectPhoto`, before/after, cascade).
+- **Person** — name, company, role, phone, email, notes, `kind` (Household, Tradesperson, Provider). Reverse links: assigned tasks, task completions, maintenance work, bills, maintenance plans.
+- **Bill** — name, category, amount, `isEstimate`, frequency (weekly … yearly, one-off), `nextDueDate`, `paymentMethod` (typed text), `contractEndDate`, notes, `isSettled` (one-off paid), `provider` (Person), `payments` (`BillPayment`: amount, paid date, due date, note), `documents`. `isOverdue` = unpaid and past due.
+- **HomeTask** (To-Do job) — title, notes, time of day, optional `startDate`, repeat (Once, Daily, Weekly on chosen weekdays, Monthly, Yearly), `isDone` (one-offs), `assignee`, `project`, `room`, `asset`, `checklist` (`TaskChecklistItem`), `completions` (`TaskCompletion`: occurrence date, completed at, note, photo, person). `appears(on:)` holds the no-pile-up rules.
 
-### Document
-- `title`, `type: DocumentType`, `fileURL: String`, `ocrText: String`, `createdAt`
-- `asset: Asset?` (nullify)
-- `DocumentType` enum: `manual`, `receipt`, `invoice`, `certificate`, `guarantee`, `other`
+`FloorplanGeometry` (in `Room.swift`) holds plan maths: `pointsPerMetre`, local and world rects for a room's pieces, quarter-turn rotation, bounds, overlap checks, snapping, free-spot search and `hostRect(for:in:)` for doors on extra pieces.
 
-### Warranty
-- `provider`, `startDate`, `expiryDate`, `notes`, `createdAt`
-- `asset: Asset?` (nullify)
-- Computed: `isExpired: Bool`, `daysUntilExpiry: Int?`
+## 7. Services
 
-### Maintenance
-- `task`, `date`, `cost: Double`, `notes`, `createdAt`
-- `asset: Asset?` (nullify)
+- **TodoFeed** — builds To-Do rows (`TodoItem` with a `TodoSource` of task, bill, plan, warranty or document) and the History list for any day, and performs tick/untick.
+- **NotificationService** — local reminders with stable identifiers from each record's `reminderID`:
+  - warranties: 30 days before (or fewer if sooner) and on the day;
+  - one-off maintenance records: 7 days before;
+  - bills: 2 days before and on the day, plus 30 days before a contract ends;
+  - maintenance plans: on the day, worded "Whenever suits";
+  - document expiry: 30 days before and on the day.
+  To-Do jobs have no notifications.
+- **OCRService** — Vision text recognition for images, scans and PDFs (async, via continuation), plus a simple receipt reader (amount, date).
+- **DocumentScannerService** — VisionKit scanner, and `DocumentStorage` for files in `Documents/UploadedDocuments`.
+- **RoomScannerService** — RoomPlan capture on LiDAR devices, turned into an axis-aligned room outline with doors and detected objects. `isSupported` is false in the Simulator.
+- **PhotoStore** (in `VoidUI.swift`) — JPEGs in `Documents/Photos` for asset, project and completion photos.
 
-### Person
-- `name`, `company`, `role`, `phoneNumber`, `email`, `notes`, `createdAt`
-- No inverse relationship declared (referenced by `Project.contractors` via cascade)
+## 8. Screens
 
-### Project
-- `title`, `projectDescription`, `startDate: Date?`, `endDate: Date?`, `budget: Double`, `actualCost: Double`, `status: ProjectStatus`, `notes`, `createdAt`
-- `home: Home?` (nullify), `contractors: [Person]` (cascade)
-- `ProjectStatus` enum: `planned`, `inProgress`, `completed`, `onHold`
-
-**Note:** `Person` has no inverse back-reference, and `Project.contractors` uses `.cascade` — deleting a project will delete its contractors, which may be unexpected if a person is shared across projects. Worth flagging.
-
-## 6. Services
-
-### NotificationService (singleton)
-- `requestAuthorization()` — async, requests `.alert/.sound/.badge`
-- `scheduleWarrantyExpiryReminder(for:)` — fires on the expiry date itself (not N days before — note this is a potential bug vs. the README's "expiry alerts" intent)
-- `scheduleMaintenanceReminder(for:daysBefore:)` — defaults to 7 days before `maintenance.date`
-- `scheduleCustomReminder(title:body:date:)`
-- `cancelNotification(withIdentifier:)`, `cancelAllNotifications()`
-- Identifiers: `"warranty-\(id)"`, `"maintenance-\(id)"`, or UUID for custom
-
-### OCRService
-- `recognizeText(from:) async -> String` — uses `VNRecognizeTextRequest`, `.accurate`, `en-US`, language correction on. **Bug:** the completion handler builds `recognizedText` as a local constant that is never returned — the function always returns `""`. The async wrapper does not actually bridge the callback result.
-- `extractReceiptInfo(from:) -> ReceiptInfo` — regex-based: first non-price/non-"Total" line ≥4 chars becomes `retailer`; matches `\d{1,2}[/-]\d{1,2}[/-]\d{2,4}` for date; matches `\$?\d+\.\d{2}` for total (prefers lines containing "total", else largest price)
-- `ReceiptInfo { retailer, date: Date?, total: Double }`
-- Uses a custom `DateFormatter.then { }` helper for inline configuration
-
-### DocumentScannerService
-- `DocumentScannerView: UIViewControllerRepresentable` wrapping `VNDocumentCameraViewController`
-- Bindings: `isPresented`, `scannedImages: [UIImage]`
-- Coordinator handles success (collects all pages), cancel, and error
-
-### RoomScannerService
-- **Currently a stub.** `RoomPlan` import is commented out. `RoomScannerView` shows a label "Room Scanner (Not available in this environment)" and after 1s sets `scannedResult = "Stub room data"`. `RoomScannerResultView` displays the string. README/feature list overstate this — it is not functional.
-
-## 7. UI / Design System
-
-### Aesthetic
-"Cosmic / glassmorphic" — deep midnight gradient backgrounds with subtle purple radial glows, a sparse starfield, and frosted-glass cards/icons with thin gradient strokes and soft shadows. Heavy use of `LinearGradient`/`RadialGradient`, `RoundedRectangle(cornerRadius: 22, style: .continuous)`, white-on-near-black text, and letter-spaced uppercase labels.
-
-### Color tokens (from README, used inline as `Color(red:green:blue:)`)
-- Background: `RGB(0.1, 0.1, 0.11)` — deep charcoal
-- Surface: `RGB(0.2, 0.2, 0.22)`
-- Text primary: white
-- Text secondary: `RGB(0.6, 0.6, 0.62)`
-- Text tertiary: `RGB(0.5, 0.5, 0.52)`
-- Accent palette: muted purples/blues/teals per module (each app icon has its own tint)
-
-### Typography (system font)
-- Header: 34pt Light (home screen uses 44pt UltraLight with tracking 6)
-- Title: 17pt Medium
-- Body: 15pt Regular
-- Caption: 13pt Regular
-- Small/labels: 11pt Medium/Semibold, uppercase, tracking 1.5–3
-
-### Reusable components (defined twice — see "Known issues")
-- `StarryBackground` — gradient + Canvas-drawn 80 stars with `drawingGroup()` GPU flattening. All shared components live in `SharedViews.swift` (the orphaned `SharedComponents.swift` duplicate was removed during the Step 1 consolidation).
-- `GlassAppIcon<Destination: View>` — 76×76 rounded-square icon with tinted glass layers, glossy top highlight, press-scale animation via `GlassAppButtonStyle`
-- `GlassStatCard`, `GlassDetailCard`, `GlassTextField` (supports multiline via `TextEditor`), `PersonRow`, `AssetRow`
-- `VisualOrbMetric` — circular "orb" metric with gradient ring (defined in `HomeScreen.swift`)
-- `PlaceholderView` — "Coming Soon" screen for unimplemented modules
-
-### Navigation
-- `NavigationStack` at the root
-- `HomeScreen` hides the nav bar; module views use `.inline` title display + custom back buttons calling `@Environment(\.dismiss)`
-- App icons are `NavigationLink`s into each module
-
-## 8. Screens / Modules
-
-### HomeScreen (launcher)
-- 4-column `LazyVGrid` of `GlassAppIcon`s: Home, Rooms, Assets, Documents, Warranties, Maintenance, People, Projects, Timeline, Search
-- "VOID" wordmark + home name header
-- Auto-creates default "My Home" on first appear
-
-### HomeDetailView
-- Immersive cosmic orb visual, home name/address, three `VisualOrbMetric`s (rooms/assets/projects counts), glass details card
-
-### RoomsListView (616 lines — most complex)
-- Toggle between **Floorplan mode** (rooms positioned via `xPosition`/`yPosition` on a canvas, filtered by `currentFloor`) and **List mode**
-- Floor selector derived from existing rooms
-- Add-room sheet, room detail/edit
-
-### AssetsListView, DocumentsListView, WarrantiesListView, MaintenanceListView, PeopleListView, ProjectsListView
-- Standard pattern: `@Query` the entity, list of glass rows, add/edit sheets, detail views
-- Documents integrates the scanner + OCR flow
-- Warranties surfaces `isExpired` / `daysUntilExpiry` and schedules notifications
-- Projects (903 lines) is the largest — manages projects plus their `contractors: [Person]`
-
-### TimelineView
-- Aggregates `createdAt`/date events across the home's assets, maintenance, projects, warranties into a chronological feed. Empty state handled.
+- **HomeScreen** — launcher. Grid of eight: Rooms, Assets, Documents, Warranties, Maintenance, Projects, Timeline, Search. Dock of four: Home, Bills, People, To-Do.
+- **HomeDashboardView** — Today ring, tiles that open each page (bills this week, warranties ending, maintenance, projects, assets, rooms), Coming up for two weeks, home details.
+- **TodoView** — Today grouped Morning/Afternoon/Evening/Anytime with a week strip; All jobs and History tabs; add needs only a title; long-press to complete with note, photo and person; `TaskDetailView` with its own history.
+- **BillsView** — bills list, rough monthly total, paid this month, Mark paid, payment history chart, contract-ending warning. Never connects to a bank.
+- **RoomsListView** — floor plan and room pages (see section 9).
+- **AssetsListView** — photo cards with warranty badge; asset page links to room, warranties, documents, plans, history, jobs, projects.
+- **DocumentsListView** — coloured folders by type, first-page previews, search inside scanned text, expiry dates, links.
+- **WarrantiesListView** — shield cards with countdown bar, grouped Active / Ending soon / Expired, claim contact, receipts.
+- **MaintenanceListView** — Plans, Log and By item views.
+- **ProjectsListView** — jobs with progress, budget bar, spending, before/after photos, links to people, rooms, assets, documents.
+- **PeopleListView** — people by kind; person page shows jobs, projects, bills, plans, work done and completions, with Text/Email/Call.
+- **TimelineView** — see below.
+- **SearchView** — see below.
 
 ### SearchView
-- Single search field; queries all 7 entity types via `@Query` and `lowercased().contains(...)`, returns `SearchResult` array with `id/title/subtitle/type/icon`. (Note: searches in-memory `@Query` results, not Spotlight — fine for current scale.)
+Searches rooms (name, floor, piece names), assets (incl. serial number and notes), documents (title, type and **scanned text**), warranties (provider, asset, claim contact, notes), maintenance plans and logs, projects (incl. description and notes), bills (name, provider, category, payment method, notes), To-Do jobs (title, links, assignee, checklist, notes, completion notes) and people (incl. notes). Results are grouped by type with counts; title matches sort first. When the match is not in the title, a snippet around it is shown with a label (e.g. "Scanned text", "Note"), and matching words are highlighted in titles and snippets. Each result opens the exact record's detail page. The last eight searches are kept in `@AppStorage("search.recent")` on the device, with per-item remove and Clear. Only an overdue bill's subtitle is red.
 
-## 9. Permissions (Info.plist)
-- `NSCameraUsageDescription` — for document scanning & asset photos
-- `NSPhotoLibraryUsageDescription` — for photo picker
-- `NSDocumentsFolderUsageDescription` — for document storage
+### TimelineView
+Built by `TimelineBuilder.build` from records; stores nothing. Layout: filter chips (All, Bills, To-Do, Maintenance, Warranties, Projects, Assets, Documents), a **Coming up** section for the next 60 days (soonest first, overdue bills pinned at the top), a **Today** line, then history newest-first under month headers on a vertical rail.
+- History: assets bought, project start/finish, maintenance logs, warranty start/end, documents added and expired, bill payments, To-Do completions (with who and the note).
+- Coming up: bills due (an unpaid bill past due shows on today as "Overdue" in red — the only red), maintenance plans (past-due plans sit on today as "Whenever suits"), maintenance records dated in the future, warranty endings, document expiries, project dates, and the next day each To-Do job is on the list and not yet done.
+Every row opens its record.
 
-## 10. MVP Scope (per README — all marked ✅)
-Home launcher; Rooms; Assets; Documents; Warranties; Maintenance; People; Projects; Timeline; Global search; Dark mode; Accessibility; VisionKit scanning; OCR; Receipt extraction; Warranty notifications; Maintenance reminders; RoomPlan room scanning (⚠️ actually stubbed); Photo picker.
+## 9. Floor plan (RoomsListView)
 
-## 11. Planned / Not Yet Implemented
-- Barcode/QR scanning
-- Core Spotlight integration
-- Photo attachments for assets
-- Document file storage (currently `fileURL: String`, no real file management shown)
-- Data export
-- iCloud sync
-- Shared home support
-- Apple Watch companion
-- "Coming Soon" modules listed in README: Materials, Measurements, Electrical, Heating, Plumbing, Network
+- One canvas per floor, with grid, pinch zoom and pan (zoom about the screen centre), double-tap to reset, floor switcher, edit mode, door mode, rotation in quarter turns, magnetic snapping to other rooms with guide lines and a haptic, overlap prevention, "Tidy to grid" auto-arrange, `RoomShapeEditor` for extra pieces, and LiDAR scanning on supported devices.
+- Drawing (`FloorplanDrawing` helpers):
+  - `InteractiveFloorplanRoom` draws each room's floor (blue when selected) and an upright label with name, m² (union area) and up to six asset dots ("+n" beyond).
+  - `FloorplanWallsLayer` draws walls for all rooms on the floor in one pass, as a 0.15 m band centred on each room's outline (pieces of one room are unioned so there's no wall between them). Walls of touching rooms overlap exactly, so a shared wall reads as one. Door openings are cleared through every wall at that spot, then door leaves (0.8 m, two for double doors) and dashed swing arcs are drawn. It also draws measurement lines: width and depth of the selected room, or of the whole floor when nothing is selected. It ignores touches.
+  - While a room is dragged, the layer leaves that room out and the room draws its own walls and doors (`FloorplanRoomLayer.complete`) so they follow the finger.
+  - `FloorplanScaleBar` (top left) picks 25 cm … 20 m to suit the zoom.
+  - Door swing direction is consistent on every edge: `opensInward` swings into the room.
+- **Room page** (`RoomDetailView`): name, floor, area, and sections for assets, documents, warranties (of items in the room), maintenance plans and history (room's own plus its items'), projects (linked to the room or to its items, with "via an item here"), and To-Do jobs for the room or its items (finished one-offs hidden). Add/Link buttons create plans, logs and jobs pre-linked to the room, and link projects.
 
-## 12. Known Issues & Gotchas (important for any AI working on this)
+## 10. Design System
 
-1. **~~Duplicate type declarations.~~ RESOLVED.** The orphaned `SharedComponents.swift` duplicate was removed during the Step 1 consolidation. `SharedViews.swift` is now the single canonical source for all shared glass components.
-2. **OCRService always returns `""`.** `recognizeText(from:)` builds `recognizedText` inside a Vision completion handler but never captures it back to the async return. Needs a continuation/`withCheckedThrowingContinuation` bridge.
-3. **RoomPlan is stubbed.** `RoomScannerService.swift` has the import commented out and returns hardcoded "Stub room data". Any feature work claiming RoomPlan/LiDAR scanning is not real yet.
-4. **Warranty reminder timing.** `scheduleWarrantyExpiryReminder` triggers on the expiry date itself, not N days before. If "expiring soon" alerts are wanted, schedule earlier.
-5. **`Project.contractors` uses `.cascade`.** Deleting a project deletes its `Person` contractors. If a person can belong to multiple projects, this is data loss. Consider `.nullify` or a join model.
-6. **`Person` has no inverse relationship** to Project, so SwiftData won't auto-maintain back-references.
-7. **No ViewModels exist** despite "MVVM" in the README — all logic is inline in views. The `ViewModels/` directory is empty.
-8. **No migration plan** beyond default-valued properties on `Room`. Schema changes will likely fatal-error at launch.
-9. **No tests, no CI config, no lint config** in the repo.
-10. **`autocapitalization`** is deprecated in newer iOS SDKs; may produce warnings.
-11. **`fileURL: String`** for documents — no evidence of actual file persistence/sandbox management in the scanned code; verify how scanned images are stored before assuming durability.
+Cosmic glass look: `StarryBackground`, muted per-module tints in `VoidPalette` (`VoidUI.swift`), glass cards via `.voidCard(cornerRadius:)`, uppercase letter-spaced labels, system fonts only. Shared building blocks: `VoidPage`, `ChipBar`, `StatTile`, `LinkedSection`, `LinkRow`, `MultiLinkSheet`, `FormSheet`, picker/date fields, `PhotoStore`, `DayText`, `Money` (in `SharedViews.swift`), `GlassSectionHeader`. Module pages use a custom Back button with `@Environment(\.dismiss)` and hide the nav bar.
 
-## 13. Build & Run
+## 11. Known Issues & Not Verified
+
+- Nothing on this branch has been run in a simulator or on a phone by the AI; only CI compile checks have passed.
+- Lightweight migration and the backup path have not been tested against the user's real saved data.
+- Assigning jobs to a person only works on this phone; nothing syncs.
+- No tests, no ViewModels (logic lives in views and `TodoFeed`).
+- Compiler warnings: missing `AccentColor` asset, deprecated `contentEdgeInsets` in `RoomScannerService`, and a retroactive `Identifiable` conformance on `URL` in `DocumentsListView`.
+- Not built: barcode scanning, Spotlight, export, iCloud sync, shared homes, Watch app.
+
+## 12. Build & Run
 
 ```bash
-cd /Users/andrewblewett/CascadeProjects/VoidHomeOS
+git fetch && git checkout wire-up-everything && git pull
 open VoidHomeOS.xcodeproj
 ```
-- Select an iOS 17+ simulator (iPhone 15 Pro recommended for RoomPlan, though that feature is stubbed) or a physical device.
-- Cmd+R to build and run.
-- First launch auto-creates "My Home"; start by adding rooms, then assets within rooms.
+Pick an iOS 17+ simulator and press Cmd+R. LiDAR scanning needs a Pro iPhone or iPad.
 
-## 14. Conventions to Follow When Editing
+## 13. Conventions
 
-- Use system fonts via `.font(.system(size:weight:design:))` — no custom fonts.
-- Use `Color(red:green:blue:)` literals matching the existing muted palette; do not introduce bright/saturated colors.
-- Glass cards: `RoundedRectangle(cornerRadius: 18–22, style: .continuous)` with `Color.white.opacity(0.03–0.04)` fill + thin gradient stroke + soft shadow.
-- Uppercase, letter-spaced labels for section headers and field titles.
-- Every module view wraps its body in `ZStack { StarryBackground().ignoresSafeArea(); ... }` and provides a custom "Back" chevron button using `@Environment(\.dismiss)`.
-- Persist data via `@Environment(\.modelContext)` + `@Query`; insert/delete with `modelContext.insert` / `modelContext.delete`.
-- Keep iOS 17.0 as the deployment target; gate older APIs with `@available`.
+- Persist with `@Environment(\.modelContext)` and `@Query`.
+- New stored properties need defaults (section 5).
+- Keep the bill-only overdue rule (section 2) in any new screen.
+- Push work to `wire-up-everything`; leave `main`/`master` alone.
 
-## 15. License
+## 14. License
+
 Proprietary — all rights reserved (per README).
