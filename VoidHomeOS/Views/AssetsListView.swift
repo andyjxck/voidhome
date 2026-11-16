@@ -1,367 +1,228 @@
 import SwiftUI
 import SwiftData
 
+/// Assets as a grid of photo cards with a warranty badge.
 struct AssetsListView: View {
     @Environment(\.modelContext) private var modelContext
-    @Environment(\.dismiss) private var dismiss
     @Query(sort: \Asset.name) private var assets: [Asset]
     @State private var showingAddAsset = false
-    
-    var body: some View {
-        ZStack {
-            // Unique starry background for AssetsListView
-            StarryBackground(
-                stars: (0..<120).map { _ in
-                    Star(
-                        x: CGFloat.random(in: 0...1),
-                        y: CGFloat.random(in: 0...1),
-                        size: CGFloat.random(in: 1...3),
-                        opacity: Double.random(in: 0.15...0.6),
-                        color: [Color(red: 0.8, green: 0.9, blue: 1.0), Color(red: 1.0, green: 0.95, blue: 0.85)].randomElement()!
-                    )
-                }
-            )
-            .ignoresSafeArea()
-            
-            ScrollView {
-                VStack(spacing: 28) {
-                    // Header
-                    HStack(alignment: .top) {
-                        VStack(alignment: .leading, spacing: 10) {
-                            Button(action: { dismiss() }) {
-                                HStack(spacing: 4) {
-                                    Image(systemName: "chevron.left")
-                                        .font(.system(size: 16, weight: .semibold))
-                                    Text("Back")
-                                        .font(.system(size: 16))
-                                }
-                                .foregroundColor(.white.opacity(0.8))
-                            }
-                            .padding(.bottom, 4)
+    @State private var searchText = ""
+    @State private var category = "All"
 
-                            Text("VOID")
-                                .font(.system(size: 44, weight: .ultraLight, design: .default))
-                                .foregroundColor(.white)
-                                .tracking(6)
-                                .shadow(color: Color.purple.opacity(0.3), radius: 20, x: 0, y: 0)
-                            
-                            Text("ASSETS")
-                                .font(.system(size: 13, weight: .medium))
-                                .foregroundColor(Color(red: 0.55, green: 0.5, blue: 0.65))
-                                .tracking(3)
-                        }
-                        Spacer()
-                        Button(action: { showingAddAsset = true }) {
-                            Image(systemName: "plus")
-                                .font(.system(size: 18, weight: .semibold))
-                                .foregroundColor(.white)
-                                .frame(width: 44, height: 44)
-                                .background(Color.white.opacity(0.08))
-                                .clipShape(Circle())
-                                .overlay(Circle().stroke(Color.white.opacity(0.12), lineWidth: 0.5))
-                        }
-                        .padding(.top, 4)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 24)
-                    .padding(.top, 50)
-                    
-                    // Assets list with glassmorphic rows
-                    VStack(spacing: 12) {
-                        ForEach(assets) { asset in
-                            NavigationLink(destination: AssetDetailView(asset: asset)) {
-                                AssetRow(asset: asset)
-                            }
-                            .buttonStyle(PlainButtonStyle())
-                            .contextMenu {
-                                Button(role: .destructive) {
-                                    withAnimation {
-                                        NotificationService.shared.cancelReminders(forAssetBeingDeleted: asset)
-                                        modelContext.delete(asset)
-                                    }
-                                } label: {
-                                    Label("Delete", systemImage: "trash")
-                                }
-                            }
-                        }
-                        
-                        if assets.isEmpty {
-                            VStack(spacing: 16) {
-                                Image(systemName: "cube")
-                                    .font(.system(size: 48))
-                                    .foregroundColor(Color(red: 0.4, green: 0.35, blue: 0.5))
-                                
-                                Text("No assets yet")
-                                    .font(.system(size: 16))
-                                    .foregroundColor(Color(red: 0.5, green: 0.45, blue: 0.6))
-                                
-                                Button(action: { showingAddAsset = true }) {
-                                    Text("Add Asset")
-                                        .font(.system(size: 14, weight: .medium))
-                                        .foregroundColor(.white)
-                                        .padding(.horizontal, 20)
-                                        .padding(.vertical, 10)
-                                        .background(
-                                            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                                .fill(Color(red: 0.55, green: 0.3, blue: 0.6))
-                                        )
-                                }
-                            }
-                            .padding(.vertical, 40)
-                        }
-                    }
-                    .padding(.horizontal, 24)
-                    .padding(.bottom, 40)
+    private var categories: [String] {
+        ["All"] + Array(Set(assets.map { $0.category }.filter { !$0.isEmpty })).sorted()
+    }
+
+    private var filtered: [Asset] {
+        assets.filter { asset in
+            (category == "All" || asset.category == category) &&
+            (searchText.isEmpty || asset.name.localizedCaseInsensitiveContains(searchText) || asset.manufacturer.localizedCaseInsensitiveContains(searchText) ||
+             asset.model.localizedCaseInsensitiveContains(searchText) || asset.serialNumber.localizedCaseInsensitiveContains(searchText) || asset.locationDisplay.localizedCaseInsensitiveContains(searchText))
+        }
+    }
+
+    var body: some View {
+        VoidPage(subtitle: "Assets", addAction: { showingAddAsset = true }) {
+            if !assets.isEmpty {
+                HStack(spacing: 12) {
+                    StatTile(icon: "cube.fill", tint: VoidPalette.assets, value: "\(assets.count)", label: "Things you own")
+                    StatTile(icon: Money.symbolName(filled: true), tint: VoidPalette.bills, value: Money.format(assets.reduce(0) { $0 + $1.purchasePrice }, decimals: 0), label: "Total paid")
+                }
+                .padding(.horizontal, 24)
+                VoidSearchField(prompt: "Search assets", text: $searchText)
+                if categories.count > 2 {
+                    ChipBar(options: categories, selection: $category) { $0 }
                 }
             }
-            .sheet(isPresented: $showingAddAsset) {
-                AddAssetView()
+
+            if filtered.isEmpty {
+                EmptyStateView(icon: "cube", text: assets.isEmpty ? "Add the things you own: appliances, furniture, tech. Keep their receipts, warranties and upkeep together." : "Nothing matches.", buttonTitle: assets.isEmpty ? "Add an asset" : nil) { showingAddAsset = true }
             }
+
+            LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) {
+                ForEach(filtered) { asset in
+                    NavigationLink(destination: AssetDetailView(asset: asset)) { AssetCard(asset: asset) }
+                        .buttonStyle(.plain)
+                        .contextMenu {
+                            Button(role: .destructive) {
+                                for w in asset.warranties { NotificationService.shared.cancelWarrantyReminder(for: w) }
+                                PhotoStore.delete(asset.photoFileName)
+                                modelContext.delete(asset)
+                            } label: { Label("Delete", systemImage: "trash") }
+                        }
+                }
+            }
+            .padding(.horizontal, 24)
         }
-        .navigationBarHidden(true)
+        .sheet(isPresented: $showingAddAsset) { AddAssetView() }
     }
 }
 
-// MARK: - Asset Detail View
+struct AssetCard: View {
+    let asset: Asset
+
+    private var warrantyBadge: (String, Color)? {
+        guard let latest = asset.warranties.max(by: { $0.expiryDate < $1.expiryDate }) else { return nil }
+        switch latest.status {
+        case .active: return ("Covered", VoidPalette.done)
+        case .endingSoon: return ("Cover ending", VoidPalette.amber)
+        case .expired: return ("Cover ended", VoidPalette.muted)
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ZStack(alignment: .topTrailing) {
+                StoredPhotoView(fileName: asset.photoFileName, icon: "cube.fill", tint: VoidPalette.assets, cornerRadius: 0)
+                    .frame(height: 120)
+                if let badge = warrantyBadge {
+                    HStack(spacing: 3) {
+                        Image(systemName: "shield.fill").font(.system(size: 9))
+                        Text(badge.0).font(.system(size: 9, weight: .bold))
+                    }
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 7).padding(.vertical, 4)
+                    .background(Capsule().fill(badge.1.opacity(0.85)))
+                    .padding(8)
+                }
+            }
+            VStack(alignment: .leading, spacing: 3) {
+                Text(asset.name).font(.system(size: 14, weight: .semibold)).foregroundColor(.white).lineLimit(1)
+                Text(asset.locationDisplay.isEmpty ? asset.category : asset.locationDisplay)
+                    .font(.system(size: 11)).foregroundColor(VoidPalette.muted).lineLimit(1)
+                if asset.purchasePrice > 0 {
+                    Text(Money.format(asset.purchasePrice)).font(.system(size: 12, weight: .medium)).foregroundColor(.white.opacity(0.8))
+                }
+            }
+            .padding(10)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .voidCard(cornerRadius: 16)
+    }
+}
+
 struct AssetDetailView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
     @Bindable var asset: Asset
+    @Query(sort: \Project.title) private var allProjects: [Project]
     @State private var showingEditAsset = false
     @State private var showingAddDocument = false
-    
-    private func formatDate(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.dateStyle = .medium
-        return formatter.string(from: date)
-    }
-       
+    @State private var showingAddWarranty = false
+    @State private var showingAddPlan = false
+    @State private var showingAddLog = false
+    @State private var showingAddTask = false
+    @State private var linkingProjects = false
+    @State private var confirmDelete = false
+
     var body: some View {
-        ZStack {
-            // Unique starry background for AssetDetailView
-            StarryBackground(
-                stars: (0..<120).map { _ in
-                    Star(
-                        x: CGFloat.random(in: 0...1),
-                        y: CGFloat.random(in: 0...1),
-                        size: CGFloat.random(in: 1...3),
-                        opacity: Double.random(in: 0.15...0.6),
-                        color: [Color(red: 1.0, green: 0.95, blue: 0.85), Color(red: 0.9, green: 0.8, blue: 1.0)].randomElement()!
-                    )
+        VoidPage(subtitle: "Asset") {
+            VStack(alignment: .leading, spacing: 18) {
+                ZStack(alignment: .bottomTrailing) {
+                    StoredPhotoView(fileName: asset.photoFileName, icon: "cube.fill", tint: VoidPalette.assets, cornerRadius: 22)
+                        .frame(height: 220)
+                    PhotoPickButton(onSaved: { name in
+                        PhotoStore.delete(asset.photoFileName)
+                        asset.photoFileName = name
+                    }) {
+                        Image(systemName: "camera.fill").font(.system(size: 15)).foregroundColor(.white)
+                            .frame(width: 40, height: 40).background(Circle().fill(Color.black.opacity(0.5)))
+                    }
+                    .padding(12)
                 }
-            )
-            .ignoresSafeArea()
-            
-            ScrollView {
-                VStack(spacing: 20) {
-                    // Header
-                    HStack(alignment: .top) {
-                        VStack(alignment: .leading, spacing: 10) {
-                            Button(action: { dismiss() }) {
-                                HStack(spacing: 4) {
-                                    Image(systemName: "chevron.left")
-                                        .font(.system(size: 16, weight: .semibold))
-                                    Text("Back")
-                                        .font(.system(size: 16))
-                                }
-                                .foregroundColor(.white.opacity(0.8))
-                            }
-                            .padding(.bottom, 4)
 
-                            Text("VOID")
-                                .font(.system(size: 44, weight: .ultraLight, design: .default))
-                                .foregroundColor(.white)
-                                .tracking(6)
-                                .shadow(color: Color.purple.opacity(0.3), radius: 20, x: 0, y: 0)
-                            
-                            Text("ASSET")
-                                .font(.system(size: 13, weight: .medium))
-                                .foregroundColor(Color(red: 0.55, green: 0.5, blue: 0.65))
-                                .tracking(3)
-                        }
-                        Spacer()
-                        Button(action: { showingEditAsset = true }) {
-                            Image(systemName: "pencil")
-                                .font(.system(size: 16, weight: .semibold))
-                                .foregroundColor(.white)
-                                .frame(width: 44, height: 44)
-                                .background(Color.white.opacity(0.08))
-                                .clipShape(Circle())
-                                .overlay(Circle().stroke(Color.white.opacity(0.12), lineWidth: 0.5))
-                        }
-                        .padding(.top, 4)
+                HStack(alignment: .top) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(asset.name).font(.system(size: 26, weight: .light)).foregroundColor(.white)
+                        Text([asset.category, asset.manufacturer, asset.model].filter { !$0.isEmpty }.joined(separator: " · "))
+                            .font(.system(size: 13)).foregroundColor(VoidPalette.muted)
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 24)
-                    .padding(.top, 50)
-                    
-                    // Asset details with glassmorphic cards
-                    VStack(spacing: 16) {
-                        GlassDetailCard(label: "Name", value: asset.name, icon: "textformat", tint: Color(red: 0.55, green: 0.3, blue: 0.6))
-                        GlassDetailCard(label: "Category", value: asset.category, icon: "cube.fill", tint: Color(red: 0.25, green: 0.45, blue: 0.75))
+                    Spacer()
+                    CircleIconButton(icon: "pencil", size: 38) { showingEditAsset = true }
+                }
 
-                        if !asset.manufacturer.isEmpty {
-                            GlassDetailCard(label: "Manufacturer", value: asset.manufacturer, icon: "building.2.fill", tint: Color(red: 0.4, green: 0.4, blue: 0.7))
-                        }
+                HStack(spacing: 12) {
+                    StatTile(icon: Money.symbolName(filled: true), tint: VoidPalette.bills, value: asset.purchasePrice > 0 ? Money.format(asset.purchasePrice) : "—", label: "Paid")
+                    StatTile(icon: "calendar", tint: VoidPalette.calm, value: asset.purchaseDate.map { DayText.short($0) } ?? "—", label: "Bought")
+                }
 
-                        if !asset.model.isEmpty {
-                            GlassDetailCard(label: "Model", value: asset.model, icon: "tag.fill", tint: Color(red: 0.45, green: 0.35, blue: 0.6))
-                        }
+                VStack(spacing: 10) {
+                    if !asset.serialNumber.isEmpty { GlassDetailCard(label: "SERIAL NUMBER", value: asset.serialNumber, icon: "number", tint: VoidPalette.documents) }
+                    if !asset.notes.isEmpty { GlassDetailCard(label: "NOTES", value: asset.notes, icon: "note.text", tint: VoidPalette.muted) }
+                }
 
-                        if let room = asset.room {
-                            NavigationLink(destination: RoomDetailView(room: room)) {
-                                GlassDetailCard(label: "Room", value: "\(room.name) · \(room.floorDisplay)", icon: "square.split.bottomrightquarter", tint: Color(red: 0.25, green: 0.45, blue: 0.75))
-                            }
-                            .buttonStyle(PlainButtonStyle())
+                LinkedSection(title: "Where it is", count: asset.room == nil && asset.location.isEmpty ? 0 : 1) {
+                    if let room = asset.room {
+                        LinkRow(icon: "square.grid.2x2.fill", tint: VoidPalette.rooms, title: room.name, subtitle: asset.location.isEmpty ? "Show on the floor plan" : asset.location) {
+                            RoomDetailView(room: room)
                         }
-                        
-                        if !asset.serialNumber.isEmpty {
-                            GlassDetailCard(label: "Serial Number", value: asset.serialNumber, icon: "number", tint: Color(red: 0.2, green: 0.55, blue: 0.7))
-                        }
-                        
-                        if let purchaseDate = asset.purchaseDate {
-                            GlassDetailCard(label: "Purchase Date", value: formatDate(purchaseDate), icon: "calendar", tint: Color(red: 0.65, green: 0.4, blue: 0.35))
-                        }
-
-                        
-                        if asset.purchasePrice > 0 {
-                            GlassDetailCard(label: "Purchase Price", value: Money.format(asset.purchasePrice), icon: Money.symbolName(filled: false), tint: Color(red: 0.3, green: 0.5, blue: 0.55))
-                        }
-                        
-                        if !asset.location.isEmpty {
-                            GlassDetailCard(label: asset.room == nil ? "Location" : "Spot in Room", value: asset.location, icon: "location.fill", tint: Color(red: 0.5, green: 0.35, blue: 0.65))
-                        }
-                        
-                        if !asset.notes.isEmpty {
-                            VStack(alignment: .leading, spacing: 12) {
-                                Text("NOTES")
-                                    .font(.system(size: 11, weight: .semibold))
-                                    .foregroundColor(Color(red: 0.5, green: 0.45, blue: 0.6))
-                                    .tracking(2)
-                                
-                                Text(asset.notes)
-                                    .font(.system(size: 15))
-                                    .foregroundColor(.white)
-                                    .padding(12)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .background(
-                                        RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                            .fill(Color.white.opacity(0.02))
-                                            .overlay(
-                                                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                                    .stroke(Color.white.opacity(0.05), lineWidth: 0.5)
-                                            )
-                                    )
-                            }
-                        }
+                    } else if !asset.location.isEmpty {
+                        GlassDetailCard(label: "LOCATION", value: asset.location, icon: "location.fill", tint: VoidPalette.rooms)
                     }
-                    .padding(.horizontal, 24)
-                    
-                    // Warranties section
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("WARRANTIES (\(asset.warranties.count))")
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundColor(Color(red: 0.5, green: 0.45, blue: 0.6))
-                            .tracking(2)
-                            .padding(.horizontal, 24)
-                        
-                        if asset.warranties.isEmpty {
-                            VStack(spacing: 12) {
-                                Image(systemName: "shield.checkered")
-                                    .font(.system(size: 40))
-                                    .foregroundColor(Color(red: 0.4, green: 0.35, blue: 0.5))
-                                
-                                Text("No warranties for this asset")
-                                    .font(.system(size: 14))
-                                    .foregroundColor(Color(red: 0.5, green: 0.45, blue: 0.6))
-                            }
-                            .padding(.vertical, 30)
-                        } else {
-                            VStack(spacing: 12) {
-                                ForEach(asset.warranties) { warranty in
-                                    NavigationLink(destination: WarrantyDetailView(warranty: warranty)) {
-                                        WarrantyRow(warranty: warranty)
-                                    }
-                                    .buttonStyle(PlainButtonStyle())
-                                }
-                            }
-                            .padding(.horizontal, 24)
-                        }
+                }
+
+                LinkedSection(title: "Warranty", count: asset.warranties.count, addTitle: "Add", addAction: { showingAddWarranty = true }) {
+                    ForEach(asset.warranties.sorted { $0.expiryDate > $1.expiryDate }) { w in
+                        NavigationLink(destination: WarrantyDetailView(warranty: w)) { WarrantyRow(warranty: w) }.buttonStyle(.plain)
                     }
-                    .padding(.top, 20)
+                }
 
-                    // Documents section
-                    VStack(alignment: .leading, spacing: 12) {
-                        HStack {
-                            Text("DOCUMENTS (\(asset.documents.count))")
-                                .font(.system(size: 11, weight: .semibold))
-                                .foregroundColor(Color(red: 0.5, green: 0.45, blue: 0.6))
-                                .tracking(2)
-                            Spacer()
-                            Button(action: { showingAddDocument = true }) {
-                                Label("Add", systemImage: "plus")
-                                    .font(.system(size: 13, weight: .medium))
-                                    .foregroundColor(.white.opacity(0.85))
-                            }
-                        }
-                        .padding(.horizontal, 24)
-
-                        if asset.documents.isEmpty {
-                            Text("No documents linked. Add a manual, receipt or invoice.")
-                                .font(.system(size: 14))
-                                .foregroundColor(Color(red: 0.5, green: 0.45, blue: 0.6))
-                                .padding(.horizontal, 24)
-                        } else {
-                            VStack(spacing: 12) {
-                                ForEach(asset.documents.sorted { $0.createdAt > $1.createdAt }) { document in
-                                    NavigationLink(destination: DocumentDetailView(document: document)) {
-                                        DocumentRow(document: document)
-                                    }
-                                    .buttonStyle(PlainButtonStyle())
-                                }
-                            }
-                            .padding(.horizontal, 24)
-                        }
+                LinkedSection(title: "Documents", count: asset.documents.count, addTitle: "Add", addAction: { showingAddDocument = true }) {
+                    ForEach(asset.documents) { doc in
+                        LinkRow(icon: "doc.fill", tint: VoidPalette.documents, title: doc.title, subtitle: doc.type.rawValue) { DocumentDetailView(document: doc) }
                     }
-                    .padding(.top, 20)
+                }
 
-                    // Maintenance section
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("MAINTENANCE (\(asset.maintenanceRecords.count))")
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundColor(Color(red: 0.5, green: 0.45, blue: 0.6))
-                            .tracking(2)
-                            .padding(.horizontal, 24)
+                LinkedSection(title: "Maintenance plan", count: asset.maintenancePlans.count, addTitle: "Add", addAction: { showingAddPlan = true }) {
+                    ForEach(asset.maintenancePlans) { plan in PlanRow(plan: plan) }
+                }
 
-                        if asset.maintenanceRecords.isEmpty {
-                            Text("No maintenance logged for this asset")
-                                .font(.system(size: 14))
-                                .foregroundColor(Color(red: 0.5, green: 0.45, blue: 0.6))
-                                .padding(.horizontal, 24)
-                        } else {
-                            VStack(spacing: 12) {
-                                ForEach(asset.maintenanceRecords.sorted { $0.date > $1.date }) { record in
-                                    NavigationLink(destination: MaintenanceDetailView(maintenance: record)) {
-                                        MaintenanceRow(maintenance: record)
-                                    }
-                                    .buttonStyle(PlainButtonStyle())
-                                }
-                            }
-                            .padding(.horizontal, 24)
-                        }
+                LinkedSection(title: "Maintenance history", count: asset.maintenanceRecords.count, addTitle: "Log", addAction: { showingAddLog = true }) {
+                    ForEach(asset.maintenanceRecords.sorted { $0.date > $1.date }) { record in
+                        NavigationLink(destination: MaintenanceDetailView(maintenance: record)) { MaintenanceRow(maintenance: record) }.buttonStyle(.plain)
                     }
-                    .padding(.top, 20)
-                    .padding(.bottom, 40)
+                }
+
+                let openTasks = asset.tasks.filter { !($0.repeatRule == .none && $0.isDone) }
+                LinkedSection(title: "Jobs", count: openTasks.count, addTitle: "Add", addAction: { showingAddTask = true }) {
+                    ForEach(openTasks) { task in
+                        LinkRow(icon: task.repeatRule == .none ? "circle" : "repeat", tint: VoidPalette.todo, title: task.title, subtitle: task.scheduleSummary) { TaskDetailView(task: task) }
+                    }
+                }
+
+                LinkedSection(title: "Projects", count: asset.projects.count, addTitle: "Link", addAction: { linkingProjects = true }) {
+                    ForEach(asset.projects) { project in
+                        LinkRow(icon: "hammer.fill", tint: VoidPalette.projects, title: project.title, subtitle: project.status.rawValue) { ProjectDetailView(project: project) }
+                    }
+                }
+
+                Button(role: .destructive, action: { confirmDelete = true }) {
+                    Label("Delete asset", systemImage: "trash").font(.system(size: 14)).foregroundColor(VoidPalette.muted)
                 }
             }
-            .sheet(isPresented: $showingEditAsset) {
-                EditAssetView(asset: asset)
-            }
-            .sheet(isPresented: $showingAddDocument) {
-                AddDocumentView(initialAsset: asset)
+            .padding(.horizontal, 24)
+        }
+        .sheet(isPresented: $showingEditAsset) { EditAssetView(asset: asset) }
+        .sheet(isPresented: $showingAddDocument) { AddDocumentView(initialAsset: asset) }
+        .sheet(isPresented: $showingAddWarranty) { EditWarrantySheet(warranty: nil, presetAsset: asset) }
+        .sheet(isPresented: $showingAddPlan) { EditPlanSheet(plan: nil, presetAsset: asset) }
+        .sheet(isPresented: $showingAddLog) { EditMaintenanceLogSheet(record: nil, presetAsset: asset) }
+        .sheet(isPresented: $showingAddTask) { EditTaskSheet(task: nil, presetAsset: asset) }
+        .sheet(isPresented: $linkingProjects) {
+            MultiLinkSheet(title: "Projects", options: allProjects, label: { $0.title },
+                           isLinked: { p in asset.projects.contains { $0 === p } },
+                           toggle: { p in
+                               if let i = asset.projects.firstIndex(where: { $0 === p }) { asset.projects.remove(at: i) } else { asset.projects.append(p) }
+                           })
+        }
+        .confirmationDialog("Delete this asset? Its warranties and maintenance history go with it. Documents are kept.", isPresented: $confirmDelete, titleVisibility: .visible) {
+            Button("Delete", role: .destructive) {
+                for w in asset.warranties { NotificationService.shared.cancelWarrantyReminder(for: w) }
+                PhotoStore.delete(asset.photoFileName)
+                modelContext.delete(asset)
+                dismiss()
             }
         }
-        .navigationBarHidden(true)
     }
 }
 
@@ -377,9 +238,25 @@ private struct AssetFormFields: View {
     @Binding var room: Room?
     @Binding var location: String
     @Binding var notes: String
+    @Binding var photoFileName: String?
 
     var body: some View {
         VStack(spacing: 16) {
+            HStack(spacing: 14) {
+                StoredPhotoView(fileName: photoFileName, icon: "camera.fill", tint: VoidPalette.assets)
+                    .frame(width: 96, height: 96)
+                VStack(alignment: .leading, spacing: 8) {
+                    PhotoPickButton(onSaved: { name in photoFileName = name }) {
+                        Label(photoFileName == nil ? "Add photo" : "Change photo", systemImage: "photo.on.rectangle")
+                            .font(.system(size: 14, weight: .medium)).foregroundColor(VoidPalette.accent)
+                    }
+                    if photoFileName != nil {
+                        Button("Remove photo") { photoFileName = nil }
+                            .font(.system(size: 13)).foregroundColor(VoidPalette.muted)
+                    }
+                }
+                Spacer()
+            }
             GlassTextField(title: "Name", text: $name, icon: "textformat", tint: Color(red: 0.55, green: 0.3, blue: 0.6))
             GlassTextField(title: "Category", text: $category, icon: "cube.fill", tint: Color(red: 0.25, green: 0.45, blue: 0.75))
             GlassTextField(title: "Manufacturer", text: $manufacturer, icon: "building.2.fill", tint: Color(red: 0.4, green: 0.4, blue: 0.7))
@@ -444,6 +321,7 @@ struct AddAssetView: View {
     @State private var room: Room?
     @State private var location = ""
     @State private var notes = ""
+    @State private var photoFileName: String?
 
     init(initialRoom: Room? = nil) {
         _room = State(initialValue: initialRoom)
@@ -474,7 +352,7 @@ struct AddAssetView: View {
 
                         AssetFormFields(name: $name, category: $category, manufacturer: $manufacturer, model: $model,
                                         serialNumber: $serialNumber, purchaseDate: $purchaseDate, priceText: $priceText,
-                                        room: $room, location: $location, notes: $notes)
+                                        room: $room, location: $location, notes: $notes, photoFileName: $photoFileName)
                             .padding(.horizontal, 24)
                             .padding(.bottom, 40)
                     }
@@ -515,6 +393,7 @@ struct AddAssetView: View {
         )
         modelContext.insert(asset)
         asset.room = room
+        asset.photoFileName = photoFileName
         if let home = homes.first {
             home.assets.append(asset)
         }
@@ -557,7 +436,7 @@ struct EditAssetView: View {
 
                         AssetFormFields(name: $asset.name, category: $asset.category, manufacturer: $asset.manufacturer, model: $asset.model,
                                         serialNumber: $asset.serialNumber, purchaseDate: $asset.purchaseDate, priceText: $priceText,
-                                        room: $asset.room, location: $asset.location, notes: $asset.notes)
+                                        room: $asset.room, location: $asset.location, notes: $asset.notes, photoFileName: $asset.photoFileName)
                             .padding(.horizontal, 24)
                             .padding(.bottom, 40)
                     }

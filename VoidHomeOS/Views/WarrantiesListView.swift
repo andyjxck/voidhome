@@ -1,201 +1,104 @@
 import SwiftUI
 import SwiftData
 
+/// Warranties as shield cards with a countdown bar, grouped Active / Ending soon / Expired.
 struct WarrantiesListView: View {
     @Environment(\.modelContext) private var modelContext
-    @Environment(\.dismiss) private var dismiss
     @Query(sort: \Warranty.expiryDate) private var warranties: [Warranty]
-    @State private var showingAddWarranty = false
+    @State private var showingAdd = false
     @State private var searchText = ""
-    
-    var filteredWarranties: [Warranty] {
-        if searchText.isEmpty {
-            return warranties
-        }
-        return warranties.filter { warranty in
-            warranty.provider.localizedCaseInsensitiveContains(searchText)
+
+    private var filtered: [Warranty] {
+        guard !searchText.isEmpty else { return warranties }
+        return warranties.filter {
+            $0.provider.localizedCaseInsensitiveContains(searchText) || ($0.asset?.name ?? "").localizedCaseInsensitiveContains(searchText) || $0.notes.localizedCaseInsensitiveContains(searchText)
         }
     }
-    
+
     var body: some View {
-        ZStack {
-            // Unique starry background for WarrantiesListView
-            StarryBackground(
-                stars: (0..<120).map { _ in
-                    Star(
-                        x: CGFloat.random(in: 0...1),
-                        y: CGFloat.random(in: 0...1),
-                        size: CGFloat.random(in: 1...3),
-                        opacity: Double.random(in: 0.15...0.6),
-                        color: [Color(red: 1.0, green: 0.85, blue: 0.9), Color(red: 0.95, green: 0.9, blue: 1.0)].randomElement()!
-                    )
+        VoidPage(subtitle: "Warranties", addAction: { showingAdd = true }) {
+            if !warranties.isEmpty {
+                HStack(spacing: 12) {
+                    StatTile(icon: "checkmark.shield.fill", tint: VoidPalette.done, value: "\(warranties.filter { $0.status == .active }.count)", label: "Active")
+                    StatTile(icon: "hourglass", tint: VoidPalette.amber, value: "\(warranties.filter { $0.status == .endingSoon }.count)", label: "Ending within 60 days")
+                    StatTile(icon: "shield.slash", tint: VoidPalette.muted, value: "\(warranties.filter { $0.status == .expired }.count)", label: "Expired")
                 }
-            )
-            .ignoresSafeArea()
-            
-            ScrollView {
-                VStack(spacing: 28) {
-                    HStack(alignment: .top) {
-                        VStack(alignment: .leading, spacing: 10) {
-                            Button(action: { dismiss() }) {
-                                HStack(spacing: 4) {
-                                    Image(systemName: "chevron.left").font(.system(size: 16, weight: .semibold))
-                                    Text("Back").font(.system(size: 16))
-                                }
-                                .foregroundColor(.white.opacity(0.8))
-                            }
-                            .padding(.bottom, 4)
-                            
-                            Text("VOID")
-                                .font(.system(size: 44, weight: .ultraLight, design: .default))
-                                .foregroundColor(.white)
-                                .tracking(6)
-                                .shadow(color: Color.purple.opacity(0.3), radius: 20, x: 0, y: 0)
-                            Text("WARRANTIES")
-                                .font(.system(size: 13, weight: .medium))
-                                .foregroundColor(Color(red: 0.55, green: 0.5, blue: 0.65))
-                                .tracking(3)
-                        }
-                        Spacer()
-                        Button(action: { showingAddWarranty = true }) {
-                            Image(systemName: "plus")
-                                .font(.system(size: 18, weight: .semibold))
-                                .foregroundColor(.white)
-                                .frame(width: 44, height: 44)
-                                .background(Color.white.opacity(0.08))
-                                .clipShape(Circle())
-                                .overlay(Circle().stroke(Color.white.opacity(0.12), lineWidth: 0.5))
-                        }
-                        .padding(.top, 4)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 24)
-                    .padding(.top, 50)
+                .padding(.horizontal, 24)
+                VoidSearchField(prompt: "Search warranties", text: $searchText)
+            }
 
-                    HStack {
-                        Image(systemName: "magnifyingglass")
-                            .foregroundColor(Color(red: 0.5, green: 0.45, blue: 0.6))
-                        TextField("Search warranties", text: $searchText)
-                            .font(.system(size: 16))
-                            .foregroundColor(.white)
-                    }
-                    .padding(14)
-                    .background(
-                        RoundedRectangle(cornerRadius: 16, style: .continuous)
-                            .fill(Color.white.opacity(0.04))
-                            .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Color.white.opacity(0.06), lineWidth: 0.5))
-                    )
-                    .padding(.horizontal, 24)
-
-                    VStack(spacing: 12) {
-                        if filteredWarranties.isEmpty {
-                            VStack(spacing: 16) {
-                                Image(systemName: "shield.fill")
-                                    .font(.system(size: 48, weight: .thin))
-                                    .foregroundColor(Color(red: 0.45, green: 0.3, blue: 0.6))
-                                Text("No warranties yet")
-                                    .font(.system(size: 16))
-                                    .foregroundColor(Color(red: 0.5, green: 0.45, blue: 0.6))
-                                Button(action: { showingAddWarranty = true }) {
-                                    Text("Add Warranty")
-                                        .font(.system(size: 14, weight: .medium))
-                                        .foregroundColor(.white)
-                                        .padding(.horizontal, 20)
-                                        .padding(.vertical, 10)
-                                        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color(red: 0.35, green: 0.25, blue: 0.6)))
-                                }
-                            }
-                            .padding(.vertical, 40)
-                        } else {
-                            ForEach(filteredWarranties) { warranty in
-                                NavigationLink(destination: WarrantyDetailView(warranty: warranty)) {
-                                    WarrantyRow(warranty: warranty)
-                                }
-                                .buttonStyle(PlainButtonStyle())
+            VStack(alignment: .leading, spacing: 12) {
+                if filtered.isEmpty {
+                    EmptyStateView(icon: "shield.lefthalf.filled", text: warranties.isEmpty ? "Keep warranties with their receipts, and get a reminder 30 days before they end." : "Nothing matches.", buttonTitle: warranties.isEmpty ? "Add a warranty" : nil) { showingAdd = true }
+                }
+                ForEach([Warranty.Status.endingSoon, .active, .expired], id: \.self) { status in
+                    let group = filtered.filter { $0.status == status }
+                    if !group.isEmpty {
+                        GlassSectionHeader(title: status.rawValue).padding(.top, 4)
+                        ForEach(group) { warranty in
+                            NavigationLink(destination: WarrantyDetailView(warranty: warranty)) { WarrantyRow(warranty: warranty) }
+                                .buttonStyle(.plain)
                                 .contextMenu {
                                     Button(role: .destructive) {
-                                        withAnimation {
-                                            NotificationService.shared.cancelWarrantyReminder(for: warranty)
-                                            modelContext.delete(warranty)
-                                        }
-                                    } label: {
-                                        Label("Delete", systemImage: "trash")
-                                    }
+                                        NotificationService.shared.cancelWarrantyReminder(for: warranty)
+                                        modelContext.delete(warranty)
+                                    } label: { Label("Delete", systemImage: "trash") }
                                 }
-                            }
                         }
                     }
-                    .padding(.horizontal, 24)
-                    .padding(.bottom, 40)
                 }
             }
-            .sheet(isPresented: $showingAddWarranty) {
-                AddWarrantyView()
-            }
+            .padding(.horizontal, 24)
         }
-        .navigationBarHidden(true)
+        .sheet(isPresented: $showingAdd) { EditWarrantySheet(warranty: nil) }
     }
 }
 
 struct WarrantyRow: View {
     let warranty: Warranty
 
+    private var tint: Color {
+        switch warranty.status {
+        case .active: return VoidPalette.done
+        case .endingSoon: return VoidPalette.amber
+        case .expired: return VoidPalette.muted
+        }
+    }
+
     var body: some View {
-        HStack(spacing: 16) {
+        HStack(spacing: 14) {
             ZStack {
-                Circle()
-                    .fill(Color.white.opacity(0.04))
-                    .frame(width: 50, height: 50)
-                    .overlay(
-                        Circle().stroke(
-                            LinearGradient(colors: [Color.white.opacity(0.15), Color.white.opacity(0.05), Color.clear], startPoint: .topLeading, endPoint: .bottomTrailing),
-                            lineWidth: 0.5
-                        )
-                    )
-                Image(systemName: "shield.fill")
-                    .font(.system(size: 20, weight: .medium))
-                    .foregroundColor(warranty.isExpired ? Color.red.opacity(0.8) : Color(red: 0.45, green: 0.3, blue: 0.6))
+                Image(systemName: "shield.fill").font(.system(size: 34)).foregroundColor(tint.opacity(0.25))
+                Image(systemName: warranty.status == .expired ? "xmark" : "checkmark").font(.system(size: 13, weight: .bold)).foregroundColor(tint)
             }
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text(warranty.provider)
-                    .font(.system(size: 17, weight: .medium))
-                    .foregroundColor(.white)
-                if let asset = warranty.asset {
-                    Text(asset.name)
-                        .font(.system(size: 14))
-                        .foregroundColor(Color(red: 0.6, green: 0.55, blue: 0.7))
+            .frame(width: 44)
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    Text(warranty.asset?.name ?? warranty.provider).font(.system(size: 15, weight: .medium)).foregroundColor(.white).lineLimit(1)
+                    Spacer()
+                    Text(countdownText).font(.system(size: 12, weight: .medium)).foregroundColor(tint)
                 }
-            }
-
-            Spacer()
-
-            VStack(alignment: .trailing, spacing: 4) {
-                Text(warranty.expiryDate, style: .date)
-                    .font(.system(size: 13))
-                    .foregroundColor(warranty.isExpired ? .red : Color(red: 0.6, green: 0.55, blue: 0.7))
-                if warranty.isExpired {
-                    Text("EXPIRED")
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundColor(.red)
-                        .tracking(0.5)
-                } else if let days = warranty.daysUntilExpiry, days <= 30 {
-                    Text("\(days)d left")
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundColor(.orange)
+                Text(warranty.asset == nil ? "Ends \(DayText.short(warranty.expiryDate))" : "\(warranty.provider) · ends \(DayText.short(warranty.expiryDate))")
+                    .font(.system(size: 12)).foregroundColor(VoidPalette.muted).lineLimit(1)
+                GeometryReader { geo in
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(Color.white.opacity(0.08))
+                        Capsule().fill(tint.opacity(0.8)).frame(width: geo.size.width * warranty.remainingFraction)
+                    }
                 }
+                .frame(height: 5)
             }
         }
-        .padding(.vertical, 8)
-        .padding(.horizontal, 16)
-        .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(Color.white.opacity(0.02))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .stroke(LinearGradient(colors: [Color.white.opacity(0.08), Color.white.opacity(0.02), Color.clear], startPoint: .topLeading, endPoint: .bottomTrailing), lineWidth: 0.5)
-                )
-        )
+        .padding(14)
+        .voidCard(cornerRadius: 16)
+    }
+
+    private var countdownText: String {
+        guard let days = warranty.daysUntilExpiry, days >= 0 else { return "Expired" }
+        if days == 0 { return "Ends today" }
+        if days < 60 { return "\(days) days left" }
+        let months = Calendar.current.dateComponents([.month], from: Date(), to: warranty.expiryDate).month ?? 0
+        return months >= 24 ? "\(months / 12) years left" : "\(months) months left"
     }
 }
 
@@ -203,382 +106,130 @@ struct WarrantyDetailView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
     @Bindable var warranty: Warranty
-    @State private var showingEditWarranty = false
-    
+    @Query(sort: \Document.title) private var allDocuments: [Document]
+    @State private var showingEdit = false
+    @State private var linkingDocs = false
+    @State private var confirmDelete = false
+
     var body: some View {
-        ZStack {
-            StarryBackground().ignoresSafeArea()
-
-            ScrollView {
-                VStack(spacing: 20) {
-                    HStack(alignment: .top) {
-                        VStack(alignment: .leading, spacing: 10) {
-                            Button(action: { dismiss() }) {
-                                HStack(spacing: 4) {
-                                    Image(systemName: "chevron.left")
-                                        .font(.system(size: 16, weight: .semibold))
-                                    Text("Back")
-                                        .font(.system(size: 16))
-                                }
-                                .foregroundColor(.white.opacity(0.8))
-                            }
-                            .padding(.bottom, 4)
-
-                            Text("VOID")
-                                .font(.system(size: 44, weight: .ultraLight, design: .default))
-                                .foregroundColor(.white)
-                                .tracking(6)
-                                .shadow(color: Color.purple.opacity(0.3), radius: 20, x: 0, y: 0)
-                            Text("WARRANTY")
-                                .font(.system(size: 13, weight: .medium))
-                                .foregroundColor(Color(red: 0.55, green: 0.5, blue: 0.65))
-                                .tracking(3)
-                        }
-                        Spacer()
-                        Button(action: { showingEditWarranty = true }) {
-                            Image(systemName: "pencil")
-                                .font(.system(size: 16, weight: .semibold))
-                                .foregroundColor(.white)
-                                .frame(width: 44, height: 44)
-                                .background(Color.white.opacity(0.08))
-                                .clipShape(Circle())
-                                .overlay(Circle().stroke(Color.white.opacity(0.12), lineWidth: 0.5))
-                        }
-                        .padding(.top, 4)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 24)
-                    .padding(.top, 50)
-
-                    VStack(spacing: 16) {
-                        GlassDetailCard(label: "Provider", value: warranty.provider, icon: "shield.fill", tint: Color(red: 0.45, green: 0.3, blue: 0.6))
-                        GlassDetailCard(label: "Start Date", value: warranty.startDate.formatted(.dateTime.day().month().year()), icon: "calendar", tint: Color(red: 0.25, green: 0.45, blue: 0.75))
-                        GlassDetailCard(label: "Expiry Date", value: warranty.expiryDate.formatted(.dateTime.day().month().year()), icon: "calendar.badge.exclamationmark", tint: warranty.isExpired ? Color.red : Color(red: 0.2, green: 0.55, blue: 0.4))
-
-                        if let asset = warranty.asset {
-                            GlassDetailCard(label: "Linked Asset", value: asset.name, icon: "cube.fill", tint: Color(red: 0.55, green: 0.3, blue: 0.6))
-                        }
-
-                        if let days = warranty.daysUntilExpiry {
-                            HStack(spacing: 12) {
-                                Image(systemName: warranty.isExpired ? "exclamationmark.triangle.fill" : (days <= 30 ? "clock.fill" : "checkmark.circle.fill"))
-                                    .foregroundColor(warranty.isExpired ? .red : (days <= 30 ? .orange : .green))
-                                Text(warranty.isExpired ? "This warranty has expired" : (days <= 30 ? "Expires in \(days) days" : "Valid for \(days) more days"))
-                                    .font(.system(size: 15, weight: .medium))
-                                    .foregroundColor(warranty.isExpired ? .red : (days <= 30 ? .orange : .green))
-                                Spacer()
-                            }
-                            .padding(16)
-                            .background(
-                                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                    .fill(Color.white.opacity(0.02))
-                                    .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Color.white.opacity(0.05), lineWidth: 0.5))
-                            )
-                        }
-
-                        if !warranty.notes.isEmpty {
-                            VStack(alignment: .leading, spacing: 12) {
-                                Text("NOTES")
-                                    .font(.system(size: 11, weight: .semibold))
-                                    .foregroundColor(Color(red: 0.5, green: 0.45, blue: 0.6))
-                                    .tracking(2)
-                                Text(warranty.notes)
-                                    .font(.system(size: 15))
-                                    .foregroundColor(.white)
-                                    .padding(12)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .background(
-                                        RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                            .fill(Color.white.opacity(0.02))
-                                            .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Color.white.opacity(0.05), lineWidth: 0.5))
-                                    )
-                            }
+        VoidPage(subtitle: "Warranty") {
+            VStack(alignment: .leading, spacing: 18) {
+                HStack(alignment: .top) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(warranty.asset?.name ?? warranty.provider).font(.system(size: 26, weight: .light)).foregroundColor(.white)
+                        HStack(spacing: 6) {
+                            TagLabel(text: warranty.status.rawValue, color: warranty.status == .active ? VoidPalette.done : (warranty.status == .endingSoon ? VoidPalette.amber : VoidPalette.muted))
+                            Text(warranty.provider).font(.system(size: 13)).foregroundColor(VoidPalette.muted)
                         }
                     }
-                    .padding(.horizontal, 24)
-                    .padding(.bottom, 40)
+                    Spacer()
+                    CircleIconButton(icon: "pencil", size: 38) { showingEdit = true }
+                }
+
+                WarrantyRow(warranty: warranty)
+
+                VStack(spacing: 10) {
+                    GlassDetailCard(label: "COVER", value: "\(DayText.short(warranty.startDate)) to \(DayText.short(warranty.expiryDate))", icon: "calendar", tint: VoidPalette.warranties)
+                    if !warranty.claimContact.isEmpty {
+                        GlassDetailCard(label: "TO CLAIM", value: warranty.claimContact, icon: "phone.bubble.fill", tint: VoidPalette.calm)
+                    }
+                    GlassDetailCard(label: "REMINDERS", value: warranty.remindersEnabled ? "30 days before and on the day" : "Off", icon: "bell.fill", tint: VoidPalette.muted)
+                    if !warranty.notes.isEmpty { GlassDetailCard(label: "NOTES", value: warranty.notes, icon: "note.text", tint: VoidPalette.muted) }
+                }
+
+                LinkedSection(title: "Asset", count: warranty.asset == nil ? 0 : 1) {
+                    if let asset = warranty.asset {
+                        LinkRow(icon: "cube.fill", tint: VoidPalette.assets, title: asset.name, subtitle: asset.room?.name ?? asset.category) { AssetDetailView(asset: asset) }
+                    }
+                }
+
+                LinkedSection(title: "Receipt & documents", count: warranty.documents.count, addTitle: "Link", addAction: { linkingDocs = true }) {
+                    ForEach(warranty.documents) { doc in
+                        LinkRow(icon: "doc.fill", tint: VoidPalette.documents, title: doc.title, subtitle: doc.type.rawValue) { DocumentDetailView(document: doc) }
+                    }
+                }
+
+                Button(role: .destructive, action: { confirmDelete = true }) {
+                    Label("Delete warranty", systemImage: "trash").font(.system(size: 14)).foregroundColor(VoidPalette.muted)
                 }
             }
-            .sheet(isPresented: $showingEditWarranty, onDismiss: {
-                // Edits apply live, so reschedule (or cancel) the reminder from the warranty's current values.
-                NotificationService.shared.syncWarrantyReminder(for: warranty)
-            }) {
-                EditWarrantyView(warranty: warranty)
+            .padding(.horizontal, 24)
+        }
+        .sheet(isPresented: $showingEdit) { EditWarrantySheet(warranty: warranty) }
+        .sheet(isPresented: $linkingDocs) {
+            MultiLinkSheet(title: "Documents", options: allDocuments, label: { $0.title },
+                           isLinked: { $0.warranty === warranty },
+                           toggle: { doc in doc.warranty = (doc.warranty === warranty) ? nil : warranty })
+        }
+        .confirmationDialog("Delete this warranty?", isPresented: $confirmDelete, titleVisibility: .visible) {
+            Button("Delete", role: .destructive) {
+                NotificationService.shared.cancelWarrantyReminder(for: warranty)
+                modelContext.delete(warranty)
+                dismiss()
             }
         }
-        .navigationBarHidden(true)
     }
 }
 
-struct AddWarrantyView: View {
+struct EditWarrantySheet: View {
+    let warranty: Warranty?
+    var presetAsset: Asset? = nil
     @Environment(\.modelContext) private var modelContext
-    @Environment(\.dismiss) private var dismiss
     @Query(sort: \Asset.name) private var assets: [Asset]
-    
     @State private var provider = ""
     @State private var startDate = Date()
-    @State private var expiryDate = Date().addingTimeInterval(365 * 24 * 60 * 60)
-    @State private var selectedAsset: Asset?
+    @State private var expiryDate = Calendar.current.date(byAdding: .year, value: 1, to: Date()) ?? Date()
+    @State private var asset: Asset?
+    @State private var claimContact = ""
     @State private var notes = ""
-    @State private var enableReminder = true
-    
+    @State private var reminders = true
+    @State private var loaded = false
+
     var body: some View {
-        ZStack {
-            // Unique starry background for AddWarrantyView
-            StarryBackground(
-                stars: (0..<120).map { _ in
-                    Star(
-                        x: CGFloat.random(in: 0...1),
-                        y: CGFloat.random(in: 0...1),
-                        size: CGFloat.random(in: 1...3),
-                        opacity: Double.random(in: 0.15...0.6),
-                        color: [Color(red: 1.0, green: 0.85, blue: 0.9), Color(red: 0.95, green: 0.9, blue: 1.0)].randomElement()!
-                    )
+        FormSheet(title: warranty == nil ? "New warranty" : "Edit warranty", canSave: !provider.trimmingCharacters(in: .whitespaces).isEmpty && expiryDate >= startDate, onSave: save) {
+            GlassTextField(title: "Provider", text: $provider, icon: "building.2.fill", tint: VoidPalette.warranties)
+            MenuPickerField(title: "Asset", selection: $asset, options: assets) { $0.name }
+            DateField(title: "Starts", date: $startDate)
+            DateField(title: "Ends", date: $expiryDate)
+            HStack(spacing: 8) {
+                ForEach([1, 2, 3, 5], id: \.self) { years in
+                    Button("\(years) yr") { expiryDate = Calendar.current.date(byAdding: .year, value: years, to: startDate) ?? expiryDate }
+                        .font(.system(size: 13, weight: .medium)).foregroundColor(.white)
+                        .frame(maxWidth: .infinity).padding(.vertical, 8)
+                        .background(RoundedRectangle(cornerRadius: 10).fill(Color.white.opacity(0.06)))
                 }
-            )
-            .ignoresSafeArea()
-            
-            NavigationStack {
-                ScrollView {
-                    VStack(spacing: 28) {
-                        VStack(alignment: .leading, spacing: 10) {
-                            Text("VOID")
-                                .font(.system(size: 44, weight: .ultraLight, design: .default))
-                                .foregroundColor(.white)
-                                .tracking(6)
-                                .shadow(color: Color.purple.opacity(0.3), radius: 20, x: 0, y: 0)
-                            Text("ADD WARRANTY")
-                                .font(.system(size: 13, weight: .medium))
-                                .foregroundColor(Color(red: 0.55, green: 0.5, blue: 0.65))
-                                .tracking(3)
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, 24)
-                        .padding(.top, 50)
-
-                        VStack(spacing: 16) {
-                            GlassTextField(title: "Provider", text: $provider, icon: "shield.fill", tint: Color(red: 0.45, green: 0.3, blue: 0.6))
-                            GlassTextField(title: "Notes", text: $notes, icon: "note.text", tint: Color(red: 0.55, green: 0.35, blue: 0.35), isMultiline: true)
-
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text("START DATE")
-                                    .font(.system(size: 11, weight: .semibold))
-                                    .foregroundColor(Color(red: 0.5, green: 0.45, blue: 0.6))
-                                    .tracking(1.5)
-                                DatePicker("", selection: $startDate, displayedComponents: .date)
-                                    .datePickerStyle(.compact)
-                                    .foregroundColor(.white)
-                            }
-                            .padding(12)
-                            .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color.white.opacity(0.03)).overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Color.white.opacity(0.05), lineWidth: 0.5)))
-
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text("EXPIRY DATE")
-                                    .font(.system(size: 11, weight: .semibold))
-                                    .foregroundColor(Color(red: 0.5, green: 0.45, blue: 0.6))
-                                    .tracking(1.5)
-                                DatePicker("", selection: $expiryDate, displayedComponents: .date)
-                                    .datePickerStyle(.compact)
-                                    .foregroundColor(.white)
-                            }
-                            .padding(12)
-                            .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color.white.opacity(0.03)).overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Color.white.opacity(0.05), lineWidth: 0.5)))
-
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text("LINKED ASSET")
-                                    .font(.system(size: 11, weight: .semibold))
-                                    .foregroundColor(Color(red: 0.5, green: 0.45, blue: 0.6))
-                                    .tracking(1.5)
-                                Picker("", selection: $selectedAsset) {
-                                    Text("None").tag(nil as Asset?)
-                                    ForEach(assets) { asset in
-                                        Text(asset.name).tag(asset as Asset?)
-                                    }
-                                }
-                                .pickerStyle(.menu)
-                                .foregroundColor(.white)
-                            }
-                            .padding(12)
-                            .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color.white.opacity(0.03)).overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Color.white.opacity(0.05), lineWidth: 0.5)))
-
-                            Toggle(isOn: $enableReminder) {
-                                Text("Set Expiry Reminder")
-                                    .font(.system(size: 15))
-                                    .foregroundColor(.white)
-                            }
-                            .padding(12)
-                            .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color.white.opacity(0.03)).overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Color.white.opacity(0.05), lineWidth: 0.5)))
-                        }
-                        .padding(.horizontal, 24)
-                        .padding(.bottom, 40)
-                    }
-                }
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbarBackground(.hidden, for: .navigationBar)
-                .toolbar {
-                    ToolbarItem(placement: .navigationBarLeading) {
-                        Button("Cancel") { dismiss() }
-                            .font(.system(size: 16))
-                            .foregroundColor(.white.opacity(0.8))
-                    }
-                    ToolbarItem(placement: .navigationBarTrailing) {
-                        Button("Save") { saveWarranty(); dismiss() }
-                            .font(.system(size: 16, weight: .semibold))
-                            .disabled(provider.isEmpty)
-                            .foregroundColor(provider.isEmpty ? .white.opacity(0.3) : Color(red: 0.45, green: 0.3, blue: 0.6))
-                    }
+            }
+            GlassTextField(title: "Claim contact (phone, email or website)", text: $claimContact, icon: "phone.bubble.fill", tint: VoidPalette.calm)
+            Toggle("Remind me 30 days before and on the day", isOn: $reminders).tint(VoidPalette.warranties).foregroundColor(.white).padding(12).voidCard(cornerRadius: 16)
+            GlassTextField(title: "Notes", text: $notes, icon: "note.text", tint: VoidPalette.muted, isMultiline: true)
+        }
+        .onAppear {
+            guard !loaded else { return }
+            loaded = true
+            if let warranty {
+                provider = warranty.provider; startDate = warranty.startDate; expiryDate = warranty.expiryDate
+                asset = warranty.asset; claimContact = warranty.claimContact; notes = warranty.notes; reminders = warranty.remindersEnabled
+            } else {
+                asset = presetAsset
+                if let date = presetAsset?.purchaseDate {
+                    startDate = date
+                    expiryDate = Calendar.current.date(byAdding: .year, value: 1, to: date) ?? expiryDate
                 }
             }
         }
     }
-    
-    private func saveWarranty() {
-        let warranty = Warranty(provider: provider, startDate: startDate, expiryDate: expiryDate, notes: notes)
-        
-        if let asset = selectedAsset {
-            asset.warranties.append(warranty)
-            warranty.asset = asset
-        }
-        
-        warranty.remindersEnabled = enableReminder
-        modelContext.insert(warranty)
-        NotificationService.shared.syncWarrantyReminder(for: warranty)
-    }
-}
 
-struct EditWarrantyView: View {
-    @Environment(\.dismiss) private var dismiss
-    @Environment(\.modelContext) private var modelContext
-    @Query(sort: \Asset.name) private var assets: [Asset]
-    @Bindable var warranty: Warranty
-    @State private var selectedAsset: Asset?
-    
-    init(warranty: Warranty) {
-        self.warranty = warranty
-        _selectedAsset = State(initialValue: warranty.asset)
-    }
-    
-    var body: some View {
-        ZStack {
-            // Unique starry background for EditWarrantyView
-            StarryBackground(
-                stars: (0..<120).map { _ in
-                    Star(
-                        x: CGFloat.random(in: 0...1),
-                        y: CGFloat.random(in: 0...1),
-                        size: CGFloat.random(in: 1...3),
-                        opacity: Double.random(in: 0.15...0.6),
-                        color: [Color(red: 1.0, green: 0.95, blue: 0.85), Color(red: 0.9, green: 0.8, blue: 1.0)].randomElement()!
-                    )
-                }
-            )
-            .ignoresSafeArea()
-            
-            NavigationStack {
-                ScrollView {
-                    VStack(spacing: 28) {
-                        VStack(alignment: .leading, spacing: 10) {
-                            Text("VOID")
-                                .font(.system(size: 44, weight: .ultraLight, design: .default))
-                                .foregroundColor(.white)
-                                .tracking(6)
-                                .shadow(color: Color.purple.opacity(0.3), radius: 20, x: 0, y: 0)
-                            Text("EDIT WARRANTY")
-                                .font(.system(size: 13, weight: .medium))
-                                .foregroundColor(Color(red: 0.55, green: 0.5, blue: 0.65))
-                                .tracking(3)
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, 24)
-                        .padding(.top, 50)
-
-                        VStack(spacing: 16) {
-                            GlassTextField(title: "Provider", text: $warranty.provider, icon: "shield.fill", tint: Color(red: 0.45, green: 0.3, blue: 0.6))
-                            GlassTextField(title: "Notes", text: $warranty.notes, icon: "note.text", tint: Color(red: 0.55, green: 0.35, blue: 0.35), isMultiline: true)
-
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text("START DATE")
-                                    .font(.system(size: 11, weight: .semibold))
-                                    .foregroundColor(Color(red: 0.5, green: 0.45, blue: 0.6))
-                                    .tracking(1.5)
-                                DatePicker("", selection: $warranty.startDate, displayedComponents: .date)
-                                    .datePickerStyle(.compact)
-                                    .foregroundColor(.white)
-                            }
-                            .padding(12)
-                            .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color.white.opacity(0.03)).overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Color.white.opacity(0.05), lineWidth: 0.5)))
-
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text("EXPIRY DATE")
-                                    .font(.system(size: 11, weight: .semibold))
-                                    .foregroundColor(Color(red: 0.5, green: 0.45, blue: 0.6))
-                                    .tracking(1.5)
-                                DatePicker("", selection: $warranty.expiryDate, displayedComponents: .date)
-                                    .datePickerStyle(.compact)
-                                    .foregroundColor(.white)
-                            }
-                            .padding(12)
-                            .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color.white.opacity(0.03)).overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Color.white.opacity(0.05), lineWidth: 0.5)))
-
-                            Toggle(isOn: $warranty.remindersEnabled) {
-                                Text("Expiry Reminder")
-                                    .font(.system(size: 15))
-                                    .foregroundColor(.white)
-                            }
-                            .padding(12)
-                            .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color.white.opacity(0.03)).overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Color.white.opacity(0.05), lineWidth: 0.5)))
-
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text("LINKED ASSET")
-                                    .font(.system(size: 11, weight: .semibold))
-                                    .foregroundColor(Color(red: 0.5, green: 0.45, blue: 0.6))
-                                    .tracking(1.5)
-                                Picker("", selection: $selectedAsset) {
-                                    Text("None").tag(nil as Asset?)
-                                    ForEach(assets) { asset in
-                                        Text(asset.name).tag(asset as Asset?)
-                                    }
-                                }
-                                .pickerStyle(.menu)
-                                .foregroundColor(.white)
-                                .onChange(of: selectedAsset) { _, newAsset in
-                                    if let oldAsset = warranty.asset {
-                                        oldAsset.warranties.removeAll { $0 == warranty }
-                                    }
-                                    warranty.asset = newAsset
-                                    if let newAsset = newAsset {
-                                        newAsset.warranties.append(warranty)
-                                    }
-                                }
-                            }
-                            .padding(12)
-                            .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color.white.opacity(0.03)).overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Color.white.opacity(0.05), lineWidth: 0.5)))
-                        }
-                        .padding(.horizontal, 24)
-                        .padding(.bottom, 40)
-                    }
-                }
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbarBackground(.hidden, for: .navigationBar)
-                .toolbar {
-                    ToolbarItem(placement: .navigationBarLeading) {
-                        Button("Cancel") { dismiss() }
-                            .font(.system(size: 16))
-                            .foregroundColor(.white.opacity(0.8))
-                    }
-                    ToolbarItem(placement: .navigationBarTrailing) {
-                        Button("Save") { dismiss() }
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundColor(Color(red: 0.45, green: 0.3, blue: 0.6))
-                    }
-                }
-            }
-        }
-    }
-}
-
-#Preview {
-    NavigationStack {
-        WarrantiesListView()
+    private func save() {
+        let target = warranty ?? Warranty(provider: provider, startDate: startDate, expiryDate: expiryDate, notes: notes)
+        if warranty == nil { modelContext.insert(target) }
+        target.provider = provider.trimmingCharacters(in: .whitespaces)
+        target.startDate = startDate
+        target.expiryDate = expiryDate
+        target.asset = asset
+        target.claimContact = claimContact
+        target.notes = notes
+        target.remindersEnabled = reminders
+        try? modelContext.save()
+        NotificationService.shared.syncWarrantyReminder(for: target)
     }
 }
