@@ -329,7 +329,7 @@ struct DocumentExtraLinksFields: View {
 
     var body: some View {
         VStack(spacing: 14) {
-            MenuPickerField(title: "Warranty", selection: $warranty, options: warranties) { ($0.asset?.name).map { n in "\(n) · \($0.provider)" } ?? $0.provider }
+            MenuPickerField(title: "Warranty", selection: $warranty, options: warranties) { w in w.asset.map { "\($0.name) · \(w.provider)" } ?? w.provider }
             MenuPickerField(title: "Bill", selection: $bill, options: bills) { $0.name }
             MenuPickerField(title: "Project", selection: $project, options: projects) { $0.title }
             MenuPickerField(title: "Maintenance", selection: $maintenance, options: records) { "\($0.task) · \(DayText.short($0.date))" }
@@ -789,4 +789,25 @@ struct EditDocumentView: View {
         DocumentsListView()
     }
     .modelContainer(for: [Document.self, Asset.self], inMemory: true)
+}
+
+/// Compact document row used inside other pages.
+struct DocumentRow: View {
+    let document: Document
+    var body: some View {
+        HStack(spacing: 12) {
+            DocumentThumbnail(document: document)
+                .frame(width: 44, height: 52)
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            VStack(alignment: .leading, spacing: 3) {
+                Text(document.title).font(.system(size: 15, weight: .medium)).foregroundColor(.white).lineLimit(1)
+                Text([document.type.rawValue, DayText.short(document.createdAt)].joined(separator: " · "))
+                    .font(.system(size: 12)).foregroundColor(VoidPalette.muted)
+            }
+            Spacer()
+            Image(systemName: "chevron.right").font(.system(size: 11, weight: .semibold)).foregroundColor(VoidPalette.faint)
+        }
+        .padding(12)
+        .voidCard(cornerRadius: 14)
+    }
 }
