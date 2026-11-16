@@ -27,6 +27,14 @@ jobs:
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
             build 2>&1 | tee build.log
 
+      - name: Report compiled files and warnings
+        if: success()
+        run: |
+          N=$(grep -oE "SwiftCompile normal [^ ]+ [^ ]+\.swift" build.log | sed -E 's#.*/##' | sort -u | tr '\n' ' ')
+          echo "::notice title=Compiled files::$N"
+          W=$(grep -E "^/.*: warning: " build.log | sed -E "s#^.*/VoidHomeOS/#VoidHomeOS/#" | sort -u | head -40 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
+          [ -n "$W" ] && echo "::warning title=Compiler warnings::$W" || true
+
       - name: Report compiler errors
         if: failure()
         run: |

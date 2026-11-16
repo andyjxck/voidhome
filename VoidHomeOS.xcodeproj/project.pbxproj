@@ -44,6 +44,7 @@
 		VoidUISwiftFile /* VoidUI.swift in Sources */ = {isa = PBXBuildFile; fileRef = VoidUISwiftRef /* VoidUI.swift */; };
 		TodoViewSwiftFile /* TodoView.swift in Sources */ = {isa = PBXBuildFile; fileRef = TodoViewSwiftRef /* TodoView.swift */; };
 		BillsViewSwiftFile /* BillsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BillsViewSwiftRef /* BillsView.swift */; };
+		HomeDashboardViewSwiftFile /* HomeDashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = HomeDashboardViewSwiftRef /* HomeDashboardView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -86,6 +87,7 @@
 		VoidUISwiftRef /* VoidUI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoidHomeOS/Views/VoidUI.swift; sourceTree = "<group>"; };
 		TodoViewSwiftRef /* TodoView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoidHomeOS/Views/TodoView.swift; sourceTree = "<group>"; };
 		BillsViewSwiftRef /* BillsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoidHomeOS/Views/BillsView.swift; sourceTree = "<group>"; };
+		HomeDashboardViewSwiftRef /* HomeDashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoidHomeOS/Views/HomeDashboardView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -160,6 +162,7 @@
 				PeopleListViewSwiftRef /* PeopleListView.swift */,
 				ProjectsListViewSwiftRef /* ProjectsListView.swift */,
 				TimelineViewSwiftRef /* TimelineView.swift */,
+				HomeDashboardViewSwiftRef /* HomeDashboardView.swift */,
 				BillsViewSwiftRef /* BillsView.swift */,
 				TodoViewSwiftRef /* TodoView.swift */,
 				VoidUISwiftRef /* VoidUI.swift */,
@@ -261,6 +264,7 @@
 				PeopleListViewSwiftFile /* PeopleListView.swift in Sources */,
 				ProjectsListViewSwiftFile /* ProjectsListView.swift in Sources */,
 				TimelineViewSwiftFile /* TimelineView.swift in Sources */,
+				HomeDashboardViewSwiftFile /* HomeDashboardView.swift in Sources */,
 				BillsViewSwiftFile /* BillsView.swift in Sources */,
 				TodoViewSwiftFile /* TodoView.swift in Sources */,
 				VoidUISwiftFile /* VoidUI.swift in Sources */,

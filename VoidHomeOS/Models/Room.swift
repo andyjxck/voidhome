@@ -31,6 +31,8 @@ final class Room {
 
     @Relationship(deleteRule: .nullify)
     var projects: [Project] = []
+    @Relationship(deleteRule: .nullify, inverse: \HomeTask.room)
+    var tasks: [HomeTask] = []
     @Relationship(deleteRule: .nullify, inverse: \Maintenance.room)
     var maintenanceRecords: [Maintenance] = []
     @Relationship(deleteRule: .nullify, inverse: \MaintenancePlan.room)

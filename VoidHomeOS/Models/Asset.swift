@@ -33,6 +33,8 @@ final class Asset {
     var maintenancePlans: [MaintenancePlan] = []
     @Relationship(deleteRule: .nullify)
     var projects: [Project] = []
+    @Relationship(deleteRule: .nullify, inverse: \HomeTask.asset)
+    var tasks: [HomeTask] = []
 
     @Relationship(deleteRule: .cascade, inverse: \Maintenance.asset)
     var maintenanceRecords: [Maintenance] = []

@@ -13,6 +13,8 @@ final class Person {
     /// Household member, tradesperson or provider. Existing people were all contractors.
     var kindRaw: String = PersonKind.tradesperson.rawValue
 
+    @Relationship(deleteRule: .nullify, inverse: \TaskCompletion.person)
+    var taskCompletions: [TaskCompletion] = []
     @Relationship(deleteRule: .nullify, inverse: \HomeTask.assignee)
     var assignedTasks: [HomeTask] = []
     @Relationship(deleteRule: .nullify, inverse: \Maintenance.person)
