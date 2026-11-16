@@ -4,6 +4,15 @@ import SwiftData
 
 @Model
 final class Room {
+    // Sync for shared households. Every field has a default, so the lightweight migration stays safe.
+    var syncId: String = ""
+    var visibilityRaw: String = "house"   // "house" (Everyone) or "me" (Just me)
+    var createdBy: String = ""
+    var updatedBy: String = ""
+    var syncHash: String = ""
+    var syncScope: String = ""
+    var ownerUid: String = ""   // "someone's room": the member this bedroom belongs to
+
     var name: String
     var floor: String = ""
     var floorNumber: Int = 0 // Provide default value for migration

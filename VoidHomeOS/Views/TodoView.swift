@@ -337,7 +337,11 @@ struct CompleteTodoSheet: View {
                 .padding(12).voidCard(cornerRadius: 16)
             }
         }
-        .onAppear { if person == nil, case .task(let task) = item.source { person = task.assignee } }
+        .onAppear {
+            if person == nil, case .task(let task) = item.source { person = task.assignee }
+            // In a shared house, default "Done by" to whoever is ticking it off.
+            if person == nil, let me = HouseContext.uid { person = people.first { $0.memberUid == me } }
+        }
         .onDisappear { if !saved { PhotoStore.delete(photo) } }
     }
 
@@ -412,7 +416,7 @@ struct TaskDetailView: View {
                 LinkedSection(title: "History", count: done.count) {
                     ForEach(done) { c in
                         VStack(alignment: .leading, spacing: 4) {
-                            Text([c.completedAt.formatted(date: .abbreviated, time: .shortened), c.person?.name].compactMap { $0 }.joined(separator: " · "))
+                            Text([c.completedAt.formatted(date: .abbreviated, time: .shortened), c.person?.name ?? (c.completedByUid.isEmpty ? nil : HouseContext.name(for: c.completedByUid))].compactMap { $0 }.joined(separator: " · "))
                                 .font(.system(size: 13, weight: .medium)).foregroundColor(.white)
                             if !c.note.isEmpty { Text(c.note).font(.system(size: 13)).foregroundColor(VoidPalette.muted) }
                             if c.photoFileName != nil { StoredPhotoView(fileName: c.photoFileName, cornerRadius: 10).frame(width: 140, height: 100) }
@@ -468,6 +472,7 @@ struct EditTaskSheet: View {
     @State private var project: Project?
     @State private var room: Room?
     @State private var asset: Asset?
+    @State private var visibility = Visibility.house.rawValue
     @State private var loaded = false
 
     var body: some View {
@@ -523,6 +528,8 @@ struct EditTaskSheet: View {
             MenuPickerField(title: "Room", selection: $room, options: rooms) { $0.name }
             MenuPickerField(title: "Asset", selection: $asset, options: assets) { $0.name }
             GlassTextField(title: "Notes", text: $notes, icon: "note.text", tint: VoidPalette.todo, isMultiline: true)
+            VisibilityField(raw: $visibility, createdBy: task?.createdBy ?? "", tint: VoidPalette.todo,
+                            note: visibility == Visibility.me.rawValue ? "A personal job. Only you can see it." : "A house job. Everyone can see it, even when it's assigned to someone.")
         }
         .onAppear(perform: load)
     }
@@ -549,6 +556,7 @@ struct EditTaskSheet: View {
             project = task.project
             room = task.room
             asset = task.asset
+            visibility = task.visibilityRaw
         } else {
             day = Calendar.current.isDateInToday(defaultDay) ? nil : defaultDay
             project = presetProject
@@ -572,6 +580,7 @@ struct EditTaskSheet: View {
         target.project = project
         target.room = room
         target.asset = asset
+        target.visibilityRaw = visibility
 
         // Keep existing checklist rows (and their ticks) when the text is unchanged.
         var existing = target.checklist

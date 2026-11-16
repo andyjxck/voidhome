@@ -33,6 +33,14 @@ enum TaskRepeat: String, CaseIterable, Identifiable {
 /// reads them straight from their own records (see TodoFeed).
 @Model
 final class HomeTask {
+    // Sync for shared households. Every field has a default, so the lightweight migration stays safe.
+    var syncId: String = ""
+    var visibilityRaw: String = "house"   // "house" (Everyone) or "me" (Just me)
+    var createdBy: String = ""
+    var updatedBy: String = ""
+    var syncHash: String = ""
+    var syncScope: String = ""
+
     var title: String = ""
     var notes: String = ""
     var timeOfDayRaw: String = TaskTimeOfDay.anytime.rawValue
@@ -147,6 +155,14 @@ final class HomeTask {
 
 @Model
 final class TaskChecklistItem {
+    // Sync for shared households. Every field has a default, so the lightweight migration stays safe.
+    var syncId: String = ""
+    var visibilityRaw: String = "house"   // "house" (Everyone) or "me" (Just me)
+    var createdBy: String = ""
+    var updatedBy: String = ""
+    var syncHash: String = ""
+    var syncScope: String = ""
+
     var title: String = ""
     var order: Int = 0
     var createdAt: Date = Date()
@@ -171,6 +187,15 @@ final class TaskChecklistItem {
 /// One time a job was done: when, by whom, with an optional note and photo.
 @Model
 final class TaskCompletion {
+    // Sync for shared households. Every field has a default, so the lightweight migration stays safe.
+    var syncId: String = ""
+    var visibilityRaw: String = "house"   // "house" (Everyone) or "me" (Just me)
+    var createdBy: String = ""
+    var updatedBy: String = ""
+    var syncHash: String = ""
+    var syncScope: String = ""
+    var completedByUid: String = ""   // signed-in member who ticked it off
+
     /// The day of the occurrence that was done.
     var occurrenceDate: Date = Date()
     var completedAt: Date = Date()

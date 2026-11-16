@@ -68,6 +68,16 @@ enum BillCategory: String, CaseIterable, Identifiable {
 /// A regular household bill, entered by hand. The app never connects to a bank or pays anything.
 @Model
 final class Bill {
+    // Sync for shared households. Every field has a default, so the lightweight migration stays safe.
+    var syncId: String = ""
+    var visibilityRaw: String = "house"   // "house" (Everyone) or "me" (Just me)
+    var createdBy: String = ""
+    var updatedBy: String = ""
+    var syncHash: String = ""
+    var syncScope: String = ""
+    var splitModeRaw: String = "equal"   // "equal" or "custom"
+    var customSharesJSON: String = ""   // {"uid": percent} for custom splits
+
     var name: String = ""
     var categoryRaw: String = BillCategory.other.rawValue
     var amount: Double = 0
@@ -137,6 +147,7 @@ final class Bill {
         let payment = BillPayment(amount: paidAmount ?? amount, paidDate: date, dueDate: nextDueDate, note: note)
         context.insert(payment)
         payment.bill = self
+        payment.recordSplit(for: self)
         if let next = frequency.next(after: nextDueDate) {
             nextDueDate = next
         } else {
@@ -157,6 +168,17 @@ final class Bill {
 
 @Model
 final class BillPayment {
+    // Sync for shared households. Every field has a default, so the lightweight migration stays safe.
+    var syncId: String = ""
+    var visibilityRaw: String = "house"   // "house" (Everyone) or "me" (Just me)
+    var createdBy: String = ""
+    var updatedBy: String = ""
+    var syncHash: String = ""
+    var syncScope: String = ""
+    var paidByUid: String = ""   // member who paid the provider
+    var sharesJSON: String = ""   // {"uid": amount} fixed when the payment was made
+    var repaidJSON: String = ""   // {"uid": "ISO date"} shares paid back to paidByUid
+
     var amount: Double = 0
     var paidDate: Date = Date()
     var dueDate: Date = Date()

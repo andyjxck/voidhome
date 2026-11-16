@@ -4,6 +4,14 @@ import UIKit
 
 @Model
 final class Document {
+    // Sync for shared households. Every field has a default, so the lightweight migration stays safe.
+    var syncId: String = ""
+    var visibilityRaw: String = "house"   // "house" (Everyone) or "me" (Just me)
+    var createdBy: String = ""
+    var updatedBy: String = ""
+    var syncHash: String = ""
+    var syncScope: String = ""
+
     var title: String
     var type: DocumentType
     var fileURL: String
@@ -33,6 +41,8 @@ final class Document {
         self.fileURL = fileURL
         self.ocrText = ocrText
         self.createdAt = Date()
+        // New documents start as "Just me" in a shared house; documents saved before sharing stay Everyone.
+        if HouseContext.isShared { self.visibilityRaw = "me" }
     }
 
     /// Returns a file URL if fileURL points to a real file in the sandbox.

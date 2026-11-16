@@ -408,7 +408,7 @@ enum TimelineBuilder {
         for completion in completions {
             guard let task = completion.task, completion.completedAt <= now else { continue }
             var detail: [String] = []
-            if let person = completion.person?.name { detail.append("by \(person)") }
+            if let person = completion.person?.name ?? (completion.completedByUid.isEmpty ? nil : HouseContext.name(for: completion.completedByUid)) { detail.append("by \(person)") }
             if let place = task.room?.name ?? task.asset?.name ?? task.project?.title { detail.append(place) }
             if !completion.note.isEmpty { detail.append(completion.note) }
             past.append(TimelineEvent(id: key("completion", completion), date: completion.completedAt, title: "Done: \(task.title)",

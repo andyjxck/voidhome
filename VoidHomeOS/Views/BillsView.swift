@@ -12,10 +12,10 @@ struct BillsView: View {
         active.filter { $0.daysUntilDue <= 30 }.sorted { $0.nextDueDate < $1.nextDueDate }
     }
     private var later: [Bill] { active.filter { $0.daysUntilDue > 30 } }
-    private var monthlyTotal: Double { active.reduce(0) { $0 + $1.monthlyEquivalent } }
+    private var monthlyTotal: Double { active.reduce(0) { $0 + $1.myMonthlyShare } }
     private var paidThisMonth: Double {
         let cal = Calendar.current
-        return bills.flatMap(\.payments).filter { cal.isDate($0.paidDate, equalTo: Date(), toGranularity: .month) }.reduce(0) { $0 + $1.amount }
+        return bills.flatMap(\.payments).filter { cal.isDate($0.paidDate, equalTo: Date(), toGranularity: .month) }.reduce(0) { $0 + $1.myAmount }
     }
 
     var body: some View {
@@ -25,6 +25,8 @@ struct BillsView: View {
                 StatTile(icon: "checkmark.seal.fill", tint: VoidPalette.done, value: Money.format(paidThisMonth, decimals: 0), label: "Paid this month")
             }
             .padding(.horizontal, 24)
+
+            WhoOwesWhoCard().padding(.horizontal, 24)
 
             let ending = active.filter(\.contractEndingSoon)
             if !ending.isEmpty {
@@ -68,7 +70,7 @@ struct BillsView: View {
         BillRow(bill: bill)
             .contextMenu {
                 if !bill.isSettled {
-                    Button { bill.markPaid(in: modelContext); NotificationService.shared.syncBillReminder(for: bill) } label: { Label("Mark paid", systemImage: "checkmark.circle") }
+                    Button { bill.markPaid(in: modelContext); NotificationService.shared.syncBillReminder(for: bill) } label: { Label(bill.isShared && HouseContext.isShared ? "I paid this" : "Mark paid", systemImage: "checkmark.circle") }
                 }
                 Button(role: .destructive) {
                     NotificationService.shared.cancelBillReminder(for: bill)
@@ -135,6 +137,7 @@ struct BillDetailView: View {
                         Text(bill.name).font(.system(size: 26, weight: .light)).foregroundColor(.white)
                         HStack(spacing: 6) {
                             TagLabel(text: bill.category.rawValue, color: VoidPalette.bills)
+                            if HouseContext.isShared && !bill.isShared { PrivateBadge() }
                             if bill.isOverdue { TagLabel(text: "Overdue", color: VoidPalette.billOverdue) }
                         }
                     }
@@ -149,12 +152,12 @@ struct BillDetailView: View {
 
                 if !bill.isSettled {
                     Button(action: { showingPay = true }) {
-                        Label("Mark paid", systemImage: "checkmark.circle.fill")
+                        Label(bill.isShared && HouseContext.isShared ? "I paid this" : "Mark paid", systemImage: "checkmark.circle.fill")
                             .font(.system(size: 16, weight: .semibold)).foregroundColor(.white)
                             .frame(maxWidth: .infinity).padding(.vertical, 14)
                             .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(VoidPalette.bills.opacity(0.6)))
                     }
-                    Text("This only records the payment in the app. Nothing is paid from here.")
+                    Text(bill.isShared && HouseContext.isShared ? "Tap this if you paid the provider. The others then owe you their share. Nothing is paid from here." : "This only records the payment in the app. Nothing is paid from here.")
                         .font(.system(size: 11)).foregroundColor(VoidPalette.faint)
                 }
 
@@ -187,6 +190,7 @@ struct BillDetailView: View {
                                 Text(Money.format(payment.amount)).font(.system(size: 15, weight: .medium)).foregroundColor(.white)
                                 Text("Paid \(DayText.short(payment.paidDate)) · due \(DayText.short(payment.dueDate))" + (payment.note.isEmpty ? "" : " · \(payment.note)"))
                                     .font(.system(size: 12)).foregroundColor(VoidPalette.muted)
+                                SplitSharesView(record: payment)
                             }
                             Spacer()
                         }
@@ -262,7 +266,7 @@ struct MarkBillPaidSheet: View {
     @State private var note = ""
 
     var body: some View {
-        FormSheet(title: "Mark paid", saveTitle: "Paid", onSave: {
+        FormSheet(title: bill.isShared && HouseContext.isShared ? "I paid this" : "Mark paid", saveTitle: "Paid", onSave: {
             bill.markPaid(amount: Money.parse(amountText) ?? bill.amount, on: date, note: note, in: modelContext)
             NotificationService.shared.syncBillReminder(for: bill)
             try? modelContext.save()
@@ -291,6 +295,9 @@ struct EditBillSheet: View {
     @State private var provider: Person?
     @State private var notes = ""
     @State private var reminders = true
+    @State private var visibility = Visibility.house.rawValue
+    @State private var splitMode = "equal"
+    @State private var customShares: [String: Double] = [:]
     @State private var loaded = false
 
     var body: some View {
@@ -305,6 +312,7 @@ struct EditBillSheet: View {
             OptionalDateField(title: "Contract end date", date: $contractEnd)
             MenuPickerField(title: "Provider", selection: $provider, options: people) { $0.name + ($0.company.isEmpty ? "" : " · \($0.company)") }
             Toggle("Reminders (2 days before and on the day)", isOn: $reminders).tint(VoidPalette.bills).foregroundColor(.white).padding(12).voidCard(cornerRadius: 16)
+            BillSplitFields(visibility: $visibility, mode: $splitMode, custom: $customShares, createdBy: bill?.createdBy ?? "")
             GlassTextField(title: "Notes", text: $notes, icon: "note.text", tint: VoidPalette.bills, isMultiline: true)
         }
         .onAppear {
@@ -322,6 +330,9 @@ struct EditBillSheet: View {
             provider = bill.provider
             notes = bill.notes
             reminders = bill.remindersEnabled
+            visibility = bill.visibilityRaw
+            splitMode = bill.splitModeRaw
+            customShares = bill.customShares
         }
     }
 
@@ -339,6 +350,9 @@ struct EditBillSheet: View {
         target.provider = provider
         target.notes = notes
         target.remindersEnabled = reminders
+        target.visibilityRaw = visibility
+        target.splitModeRaw = splitMode
+        target.customSharesJSON = splitMode == "custom" ? SplitJSON.encode(customShares.filter { $0.value > 0 }) : ""
         if bill != nil && frequency != .once { target.isSettled = false }
         try? modelContext.save()
         NotificationService.shared.syncBillReminder(for: target)

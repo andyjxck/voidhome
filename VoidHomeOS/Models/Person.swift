@@ -3,6 +3,15 @@ import SwiftData
 
 @Model
 final class Person {
+    // Sync for shared households. Every field has a default, so the lightweight migration stays safe.
+    var syncId: String = ""
+    var visibilityRaw: String = "house"   // "house" (Everyone) or "me" (Just me)
+    var createdBy: String = ""
+    var updatedBy: String = ""
+    var syncHash: String = ""
+    var syncScope: String = ""
+    var memberUid: String = ""   // set when this person is a real house member (account)
+
     var name: String
     var company: String
     var role: String

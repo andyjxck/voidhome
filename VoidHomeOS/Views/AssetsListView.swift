@@ -239,6 +239,8 @@ private struct AssetFormFields: View {
     @Binding var location: String
     @Binding var notes: String
     @Binding var photoFileName: String?
+    var visibility: Binding<String>? = nil
+    var createdBy: String = ""
 
     var body: some View {
         VStack(spacing: 16) {
@@ -301,6 +303,10 @@ private struct AssetFormFields: View {
 
             GlassTextField(title: room == nil ? "Location" : "Spot in room (optional)", text: $location, icon: "location.fill", tint: Color(red: 0.5, green: 0.35, blue: 0.65))
             GlassTextField(title: "Notes", text: $notes, icon: "note.text", tint: Color(red: 0.65, green: 0.4, blue: 0.35), isMultiline: true)
+            if let visibility {
+                VisibilityField(raw: visibility, createdBy: createdBy, tint: VoidPalette.assets,
+                                note: visibility.wrappedValue == Visibility.me.rawValue ? "Only you can see this. Its warranties and maintenance are private too." : "Everyone in the house can see this, with its warranties and maintenance.")
+            }
         }
     }
 }
@@ -322,9 +328,14 @@ struct AddAssetView: View {
     @State private var location = ""
     @State private var notes = ""
     @State private var photoFileName: String?
+    @State private var visibility = Visibility.house.rawValue
 
     init(initialRoom: Room? = nil) {
         _room = State(initialValue: initialRoom)
+        // Items added to someone's own room start as theirs.
+        if let owner = initialRoom?.ownerUid, !owner.isEmpty, owner == HouseContext.uid {
+            _visibility = State(initialValue: Visibility.me.rawValue)
+        }
     }
 
     var body: some View {
@@ -352,7 +363,8 @@ struct AddAssetView: View {
 
                         AssetFormFields(name: $name, category: $category, manufacturer: $manufacturer, model: $model,
                                         serialNumber: $serialNumber, purchaseDate: $purchaseDate, priceText: $priceText,
-                                        room: $room, location: $location, notes: $notes, photoFileName: $photoFileName)
+                                        room: $room, location: $location, notes: $notes, photoFileName: $photoFileName,
+                                        visibility: $visibility)
                             .padding(.horizontal, 24)
                             .padding(.bottom, 40)
                     }
@@ -394,6 +406,7 @@ struct AddAssetView: View {
         modelContext.insert(asset)
         asset.room = room
         asset.photoFileName = photoFileName
+        asset.visibilityRaw = visibility
         if let home = homes.first {
             home.assets.append(asset)
         }
@@ -436,7 +449,8 @@ struct EditAssetView: View {
 
                         AssetFormFields(name: $asset.name, category: $asset.category, manufacturer: $asset.manufacturer, model: $asset.model,
                                         serialNumber: $asset.serialNumber, purchaseDate: $asset.purchaseDate, priceText: $priceText,
-                                        room: $asset.room, location: $asset.location, notes: $asset.notes, photoFileName: $asset.photoFileName)
+                                        room: $asset.room, location: $asset.location, notes: $asset.notes, photoFileName: $asset.photoFileName,
+                                        visibility: $asset.visibilityRaw, createdBy: asset.createdBy)
                             .padding(.horizontal, 24)
                             .padding(.bottom, 40)
                     }

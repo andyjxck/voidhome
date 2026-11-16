@@ -14,6 +14,8 @@ struct HomeDashboardView: View {
     @Query private var assets: [Asset]
     @Query private var rooms: [Room]
     @State private var showingEditHome = false
+    @State private var showingHouse = false
+    @ObservedObject private var houseStore = HouseStore.shared
 
     private var home: Home? { homes.first }
     private var today: [TodoItem] {
@@ -36,6 +38,13 @@ struct HomeDashboardView: View {
 
             comingUp
 
+            Button(action: { showingHouse = true }) {
+                Label(houseStore.house.map { "Shared with \($0.members.count - 1) other\($0.members.count == 2 ? "" : "s")" } ?? "Share this home",
+                      systemImage: houseStore.house == nil ? "person.badge.plus" : "person.2.fill")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundColor(VoidPalette.accent)
+            }
+
             Button(action: {
                 if home == nil { modelContext.insert(Home(name: "My Home", address: "")) }
                 showingEditHome = true
@@ -48,6 +57,7 @@ struct HomeDashboardView: View {
         .sheet(isPresented: $showingEditHome) {
             if let home { EditHomeView(home: home) }
         }
+        .sheet(isPresented: $showingHouse) { HouseView() }
     }
 
     // MARK: Today

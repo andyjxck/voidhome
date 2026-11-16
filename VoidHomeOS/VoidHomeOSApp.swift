@@ -1,6 +1,7 @@
 import SwiftUI
 import SwiftData
 import UserNotifications
+import GoogleSignIn
 
 @main
 struct VoidHomeOSApp: App {
@@ -30,7 +31,9 @@ struct VoidHomeOSApp: App {
         Bill.self,
         BillPayment.self,
         MaintenancePlan.self,
-        ProjectPhoto.self
+        ProjectPhoto.self,
+        // Added for shared households (sync fields all have defaults too).
+        ProjectSpend.self
     ])
 
     init() {
@@ -49,10 +52,19 @@ struct VoidHomeOSApp: App {
             storeProblem = message
         }
 
+        // Sharing never runs on the temporary store, so a failed open can't sync deletions.
+        let container = modelContainer
+        let allowSync = storeProblem == nil
+        MainActor.assumeIsolated {
+            HouseStore.shared.configure(container: container, syncAllowed: allowSync)
+        }
+
         Task {
             await NotificationService.shared.requestAuthorization()
         }
     }
+
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some Scene {
         WindowGroup {
@@ -62,6 +74,10 @@ struct VoidHomeOSApp: App {
                 .overlay(alignment: .top) {
                     if let storeProblem { StoreProblemBanner(message: storeProblem) }
                 }
+                .onOpenURL { url in _ = GIDSignIn.sharedInstance.handle(url) }
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase != .active { SyncEngine.shared.flush() }
         }
     }
 }

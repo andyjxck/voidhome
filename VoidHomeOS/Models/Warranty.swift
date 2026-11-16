@@ -3,6 +3,14 @@ import SwiftData
 
 @Model
 final class Warranty {
+    // Sync for shared households. Every field has a default, so the lightweight migration stays safe.
+    var syncId: String = ""
+    var visibilityRaw: String = "house"   // "house" (Everyone) or "me" (Just me)
+    var createdBy: String = ""
+    var updatedBy: String = ""
+    var syncHash: String = ""
+    var syncScope: String = ""
+
     var provider: String
     var startDate: Date
     var expiryDate: Date

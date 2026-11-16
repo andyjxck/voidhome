@@ -1795,6 +1795,8 @@ struct EditRoomView: View {
                         VStack(spacing: 16) {
                             GlassTextField(title: "Name", text: $room.name, icon: "textformat", tint: Color(red: 0.25, green: 0.45, blue: 0.75))
 
+                            RoomOwnerField(ownerUid: $room.ownerUid)
+
                             VStack(alignment: .leading, spacing: 8) {
                                 Text("FLOOR").font(.system(size: 11, weight: .semibold)).foregroundColor(Color(red: 0.5, green: 0.45, blue: 0.6)).tracking(1.5)
                                 Picker("", selection: $room.floorNumber) {

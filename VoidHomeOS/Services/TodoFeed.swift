@@ -130,6 +130,7 @@ enum TodoFeed {
         switch item.source {
         case .task(let task):
             let completion = TaskCompletion(occurrenceDate: day, note: note)
+            completion.completedByUid = HouseContext.uid ?? ""
             context.insert(completion)
             completion.task = task
             completion.person = person ?? task.assignee

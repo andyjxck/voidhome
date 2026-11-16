@@ -30,7 +30,9 @@ struct PeopleListView: View {
                         GlassSectionHeader(title: kind == .household ? "Household" : (kind == .tradesperson ? "Tradespeople" : "Providers")).padding(.top, 4)
                         ForEach(group) { person in
                             LinkRow(icon: kind.icon, tint: VoidPalette.people, title: person.name,
-                                    subtitle: [person.role, person.company].filter { !$0.isEmpty }.joined(separator: " · ")) {
+                                    subtitle: [person.role, person.company].filter { !$0.isEmpty }.joined(separator: " · "),
+                                    trailing: !person.memberUid.isEmpty ? "Member" : (HouseContext.isShared && person.visibilityRaw == Visibility.me.rawValue ? "Just me" : nil),
+                                    trailingColor: !person.memberUid.isEmpty ? VoidPalette.accent : VoidPalette.muted) {
                                 PersonDetailView(person: person)
                             }
                             .contextMenu {
@@ -68,6 +70,7 @@ struct PersonDetailView: View {
                         .background(Circle().fill(LinearGradient(colors: [VoidPalette.people, VoidPalette.accent.opacity(0.5)], startPoint: .topLeading, endPoint: .bottomTrailing)))
                     VStack(alignment: .leading, spacing: 4) {
                         Text(person.name).font(.system(size: 26, weight: .light)).foregroundColor(.white)
+                        if !person.memberUid.isEmpty { MemberBadge() }
                         Text([person.role, person.company].filter { !$0.isEmpty }.joined(separator: " · "))
                             .font(.system(size: 13)).foregroundColor(VoidPalette.muted)
                     }
@@ -188,6 +191,7 @@ struct EditPersonSheet: View {
     @State private var phoneNumber = ""
     @State private var email = ""
     @State private var notes = ""
+    @State private var visibility = Visibility.house.rawValue
     @State private var loaded = false
 
     var body: some View {
@@ -201,6 +205,12 @@ struct EditPersonSheet: View {
             GlassTextField(title: "Phone", text: $phoneNumber, icon: "phone.fill", tint: VoidPalette.people, keyboardType: .phonePad)
             GlassTextField(title: "Email", text: $email, icon: "envelope.fill", tint: VoidPalette.people, keyboardType: .emailAddress)
             GlassTextField(title: "Notes", text: $notes, icon: "note.text", tint: VoidPalette.muted, isMultiline: true)
+            if person?.memberUid.isEmpty ?? true {
+                VisibilityField(raw: $visibility, createdBy: person?.createdBy ?? "", tint: VoidPalette.people,
+                                note: visibility == Visibility.me.rawValue ? "A personal contact. Only you can see them." : "A house contact. Everyone in the house can see them.")
+            } else {
+                Text("A member of this house, with their own account.").font(.system(size: 11)).foregroundColor(VoidPalette.faint)
+            }
         }
         .onAppear {
             guard !loaded else { return }
@@ -208,6 +218,7 @@ struct EditPersonSheet: View {
             if let person {
                 name = person.name; kind = person.kind; company = person.company; role = person.role
                 phoneNumber = person.phoneNumber; email = person.email; notes = person.notes
+                visibility = person.visibilityRaw
             } else {
                 kind = presetKind
             }
@@ -224,6 +235,7 @@ struct EditPersonSheet: View {
         target.phoneNumber = phoneNumber
         target.email = email
         target.notes = notes
+        if target.memberUid.isEmpty { target.visibilityRaw = visibility }
         try? modelContext.save()
     }
 }

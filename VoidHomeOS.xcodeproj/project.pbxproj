@@ -45,6 +45,20 @@
 		TodoViewSwiftFile /* TodoView.swift in Sources */ = {isa = PBXBuildFile; fileRef = TodoViewSwiftRef /* TodoView.swift */; };
 		BillsViewSwiftFile /* BillsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BillsViewSwiftRef /* BillsView.swift */; };
 		HomeDashboardViewSwiftFile /* HomeDashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = HomeDashboardViewSwiftRef /* HomeDashboardView.swift */; };
+		ProjectSpendSwiftFile /* ProjectSpend.swift in Sources */ = {isa = PBXBuildFile; fileRef = ProjectSpendSwiftRef /* ProjectSpend.swift */; };
+		HouseContextSwiftFile /* HouseContext.swift in Sources */ = {isa = PBXBuildFile; fileRef = HouseContextSwiftRef /* HouseContext.swift */; };
+		BillSplitSwiftFile /* BillSplit.swift in Sources */ = {isa = PBXBuildFile; fileRef = BillSplitSwiftRef /* BillSplit.swift */; };
+		SyncCoreSwiftFile /* SyncCore.swift in Sources */ = {isa = PBXBuildFile; fileRef = SyncCoreSwiftRef /* SyncCore.swift */; };
+		SyncRecordsSwiftFile /* SyncRecords.swift in Sources */ = {isa = PBXBuildFile; fileRef = SyncRecordsSwiftRef /* SyncRecords.swift */; };
+		SyncEngineSwiftFile /* SyncEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = SyncEngineSwiftRef /* SyncEngine.swift */; };
+		HouseStoreSwiftFile /* HouseStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = HouseStoreSwiftRef /* HouseStore.swift */; };
+		SharingViewsSwiftFile /* SharingViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = SharingViewsSwiftRef /* SharingViews.swift */; };
+		FirebaseCoreFramework /* FirebaseCore in Frameworks */ = {isa = PBXBuildFile; productRef = FirebaseCoreProduct /* FirebaseCore */; };
+		FirebaseAuthFramework /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = FirebaseAuthProduct /* FirebaseAuth */; };
+		FirebaseFirestoreFramework /* FirebaseFirestore in Frameworks */ = {isa = PBXBuildFile; productRef = FirebaseFirestoreProduct /* FirebaseFirestore */; };
+		FirebaseStorageFramework /* FirebaseStorage in Frameworks */ = {isa = PBXBuildFile; productRef = FirebaseStorageProduct /* FirebaseStorage */; };
+		GoogleSignInFramework /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = GoogleSignInProduct /* GoogleSignIn */; };
+		GoogleServicePlist /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = GoogleServicePlistRef /* GoogleService-Info.plist */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -88,6 +102,16 @@
 		TodoViewSwiftRef /* TodoView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoidHomeOS/Views/TodoView.swift; sourceTree = "<group>"; };
 		BillsViewSwiftRef /* BillsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoidHomeOS/Views/BillsView.swift; sourceTree = "<group>"; };
 		HomeDashboardViewSwiftRef /* HomeDashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoidHomeOS/Views/HomeDashboardView.swift; sourceTree = "<group>"; };
+		ProjectSpendSwiftRef /* ProjectSpend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoidHomeOS/Models/ProjectSpend.swift; sourceTree = "<group>"; };
+		HouseContextSwiftRef /* HouseContext.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoidHomeOS/Sync/HouseContext.swift; sourceTree = "<group>"; };
+		BillSplitSwiftRef /* BillSplit.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoidHomeOS/Sync/BillSplit.swift; sourceTree = "<group>"; };
+		SyncCoreSwiftRef /* SyncCore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoidHomeOS/Sync/SyncCore.swift; sourceTree = "<group>"; };
+		SyncRecordsSwiftRef /* SyncRecords.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoidHomeOS/Sync/SyncRecords.swift; sourceTree = "<group>"; };
+		SyncEngineSwiftRef /* SyncEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoidHomeOS/Sync/SyncEngine.swift; sourceTree = "<group>"; };
+		HouseStoreSwiftRef /* HouseStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoidHomeOS/Sync/HouseStore.swift; sourceTree = "<group>"; };
+		SharingViewsSwiftRef /* SharingViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoidHomeOS/Sync/SharingViews.swift; sourceTree = "<group>"; };
+		GoogleServicePlistRef /* GoogleService-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "VoidHomeOS/GoogleService-Info.plist"; sourceTree = "<group>"; };
+		EntitlementsRef /* VoidHomeOS.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = VoidHomeOS/VoidHomeOS.entitlements; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -95,6 +119,11 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				FirebaseCoreFramework /* FirebaseCore in Frameworks */,
+				FirebaseAuthFramework /* FirebaseAuth in Frameworks */,
+				FirebaseFirestoreFramework /* FirebaseFirestore in Frameworks */,
+				FirebaseStorageFramework /* FirebaseStorage in Frameworks */,
+				GoogleSignInFramework /* GoogleSignIn in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -109,6 +138,8 @@
 				ViewsGroup /* Views */,
 				ServicesGroup /* Services */,
 				AssetsCatalogRef /* Assets.xcassets */,
+				GoogleServicePlistRef /* GoogleService-Info.plist */,
+				EntitlementsRef /* VoidHomeOS.entitlements */,
 				LaunchScreenRef /* LaunchScreen.storyboard */,
 				InfoPlist /* Info.plist */,
 				Products /* Products */,
@@ -162,6 +193,14 @@
 				PeopleListViewSwiftRef /* PeopleListView.swift */,
 				ProjectsListViewSwiftRef /* ProjectsListView.swift */,
 				TimelineViewSwiftRef /* TimelineView.swift */,
+				SharingViewsSwiftRef /* SharingViews.swift */,
+				HouseStoreSwiftRef /* HouseStore.swift */,
+				SyncEngineSwiftRef /* SyncEngine.swift */,
+				SyncRecordsSwiftRef /* SyncRecords.swift */,
+				SyncCoreSwiftRef /* SyncCore.swift */,
+				BillSplitSwiftRef /* BillSplit.swift */,
+				HouseContextSwiftRef /* HouseContext.swift */,
+				ProjectSpendSwiftRef /* ProjectSpend.swift */,
 				HomeDashboardViewSwiftRef /* HomeDashboardView.swift */,
 				BillsViewSwiftRef /* BillsView.swift */,
 				TodoViewSwiftRef /* TodoView.swift */,
@@ -192,6 +231,13 @@
 			dependencies = (
 			);
 			name = VoidHomeOS;
+			packageProductDependencies = (
+				FirebaseCoreProduct /* FirebaseCore */,
+				FirebaseAuthProduct /* FirebaseAuth */,
+				FirebaseFirestoreProduct /* FirebaseFirestore */,
+				FirebaseStorageProduct /* FirebaseStorage */,
+				GoogleSignInProduct /* GoogleSignIn */,
+			);
 			productName = VoidHomeOS;
 			productReference = VoidHomeOSApp /* VoidHomeOS.app */;
 			productType = "com.apple.product-type.application";
@@ -220,6 +266,10 @@
 				Base,
 			);
 			mainGroup = MainGroup;
+			packageReferences = (
+				FirebasePkg /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */,
+				GoogleSignInPkg /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */,
+			);
 			productRefGroup = Products /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
@@ -235,6 +285,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				AssetsCatalog /* Assets.xcassets in Resources */,
+				GoogleServicePlist /* GoogleService-Info.plist in Resources */,
 				LaunchScreen /* LaunchScreen.storyboard in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -264,6 +315,14 @@
 				PeopleListViewSwiftFile /* PeopleListView.swift in Sources */,
 				ProjectsListViewSwiftFile /* ProjectsListView.swift in Sources */,
 				TimelineViewSwiftFile /* TimelineView.swift in Sources */,
+				SharingViewsSwiftFile /* SharingViews.swift in Sources */,
+				HouseStoreSwiftFile /* HouseStore.swift in Sources */,
+				SyncEngineSwiftFile /* SyncEngine.swift in Sources */,
+				SyncRecordsSwiftFile /* SyncRecords.swift in Sources */,
+				SyncCoreSwiftFile /* SyncCore.swift in Sources */,
+				BillSplitSwiftFile /* BillSplit.swift in Sources */,
+				HouseContextSwiftFile /* HouseContext.swift in Sources */,
+				ProjectSpendSwiftFile /* ProjectSpend.swift in Sources */,
 				HomeDashboardViewSwiftFile /* HomeDashboardView.swift in Sources */,
 				BillsViewSwiftFile /* BillsView.swift in Sources */,
 				TodoViewSwiftFile /* TodoView.swift in Sources */,
@@ -361,6 +420,7 @@
 				DEVELOPMENT_ASSET_PATHS = "";
 				DEVELOPMENT_TEAM = T963633DC5;
 				ENABLE_PREVIEWS = YES;
+				CODE_SIGN_ENTITLEMENTS = VoidHomeOS/VoidHomeOS.entitlements;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSCameraUsageDescription = "Void Home uses the camera to scan documents and receipts, and to scan rooms with LiDAR.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -447,6 +507,7 @@
 				DEVELOPMENT_ASSET_PATHS = "";
 				DEVELOPMENT_TEAM = T963633DC5;
 				ENABLE_PREVIEWS = YES;
+				CODE_SIGN_ENTITLEMENTS = VoidHomeOS/VoidHomeOS.entitlements;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSCameraUsageDescription = "Void Home uses the camera to scan documents and receipts, and to scan rooms with LiDAR.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -489,6 +550,52 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+/* Begin XCRemoteSwiftPackageReference section */
+		FirebasePkg /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/firebase/firebase-ios-sdk";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 12.0.0;
+			};
+		};
+		GoogleSignInPkg /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/google/GoogleSignIn-iOS";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 9.0.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		FirebaseCoreProduct /* FirebaseCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = FirebasePkg /* XCRemoteSwiftPackageReference */;
+			productName = FirebaseCore;
+		};
+		FirebaseAuthProduct /* FirebaseAuth */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = FirebasePkg /* XCRemoteSwiftPackageReference */;
+			productName = FirebaseAuth;
+		};
+		FirebaseFirestoreProduct /* FirebaseFirestore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = FirebasePkg /* XCRemoteSwiftPackageReference */;
+			productName = FirebaseFirestore;
+		};
+		FirebaseStorageProduct /* FirebaseStorage */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = FirebasePkg /* XCRemoteSwiftPackageReference */;
+			productName = FirebaseStorage;
+		};
+		GoogleSignInProduct /* GoogleSignIn */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = GoogleSignInPkg /* XCRemoteSwiftPackageReference */;
+			productName = GoogleSignIn;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = Project /* Project object */;
 }

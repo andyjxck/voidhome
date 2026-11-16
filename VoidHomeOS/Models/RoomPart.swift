@@ -6,6 +6,14 @@ import SwiftData
 /// Used for irregular room shapes (L-shaped, T-shaped, etc.)
 @Model
 final class RoomPart {
+    // Sync for shared households. Every field has a default, so the lightweight migration stays safe.
+    var syncId: String = ""
+    var visibilityRaw: String = "house"   // "house" (Everyone) or "me" (Just me)
+    var createdBy: String = ""
+    var updatedBy: String = ""
+    var syncHash: String = ""
+    var syncScope: String = ""
+
     var name: String
     var width: Double      // in meters
     var height: Double     // in meters

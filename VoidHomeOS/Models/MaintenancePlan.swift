@@ -21,6 +21,14 @@ enum IntervalUnit: String, CaseIterable, Identifiable {
 /// It has one next date only; missed dates never pile up and it is never labelled overdue.
 @Model
 final class MaintenancePlan {
+    // Sync for shared households. Every field has a default, so the lightweight migration stays safe.
+    var syncId: String = ""
+    var visibilityRaw: String = "house"   // "house" (Everyone) or "me" (Just me)
+    var createdBy: String = ""
+    var updatedBy: String = ""
+    var syncHash: String = ""
+    var syncScope: String = ""
+
     var title: String = ""
     var intervalValue: Int = 1
     var intervalUnitRaw: String = IntervalUnit.years.rawValue
@@ -99,6 +107,14 @@ final class MaintenancePlan {
 /// Before and after pictures on a project.
 @Model
 final class ProjectPhoto {
+    // Sync for shared households. Every field has a default, so the lightweight migration stays safe.
+    var syncId: String = ""
+    var visibilityRaw: String = "house"   // "house" (Everyone) or "me" (Just me)
+    var createdBy: String = ""
+    var updatedBy: String = ""
+    var syncHash: String = ""
+    var syncScope: String = ""
+
     var fileName: String = ""
     var isAfter: Bool = false
     var caption: String = ""

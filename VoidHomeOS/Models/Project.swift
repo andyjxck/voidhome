@@ -3,6 +3,14 @@ import SwiftData
 
 @Model
 final class Project {
+    // Sync for shared households. Every field has a default, so the lightweight migration stays safe.
+    var syncId: String = ""
+    var visibilityRaw: String = "house"   // "house" (Everyone) or "me" (Just me)
+    var createdBy: String = ""
+    var updatedBy: String = ""
+    var syncHash: String = ""
+    var syncScope: String = ""
+
     var title: String
     var projectDescription: String
     var startDate: Date?
@@ -29,6 +37,7 @@ final class Project {
     var tasks: [HomeTask] = []
     @Relationship(deleteRule: .cascade, inverse: \ProjectPhoto.project)
     var photos: [ProjectPhoto] = []
+    @Relationship(deleteRule: .cascade, inverse: \ProjectSpend.project) var spends: [ProjectSpend] = []
 
     /// Share of the project's jobs that are done (0...1), or nil when it has none.
     var taskProgress: Double? {

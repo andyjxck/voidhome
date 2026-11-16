@@ -337,20 +337,52 @@ struct PhotoStrip: View {
 
 struct AddSpendSheet: View {
     let project: Project
+    @Environment(\.modelContext) private var modelContext
     @State private var amount = ""
     @State private var note = ""
+    @State private var visibility = Visibility.house.rawValue
+    @State private var split = true
+
+    private var houseProject: Bool { HouseContext.isShared && project.visibilityRaw == Visibility.house.rawValue }
 
     var body: some View {
-        FormSheet(title: "Add spending", saveTitle: "Add", canSave: (Money.parse(amount) ?? 0) > 0, onSave: {
-            project.actualCost += Money.parse(amount) ?? 0
-            if !note.trimmingCharacters(in: .whitespaces).isEmpty {
-                let line = "\(DayText.short(Date())): \(Money.format(Money.parse(amount) ?? 0)) · \(note)"
-                project.notes = project.notes.isEmpty ? line : project.notes + "\n" + line
-            }
-        }) {
+        FormSheet(title: "Add spending", saveTitle: "Add", canSave: (Money.parse(amount) ?? 0) > 0, onSave: save) {
             GlassTextField(title: "Amount", text: $amount, icon: Money.symbolName(filled: false), tint: VoidPalette.bills, keyboardType: .decimalPad)
             GlassTextField(title: "What for (optional, added to notes)", text: $note, icon: "note.text", tint: VoidPalette.muted)
+            if houseProject {
+                VisibilityField(raw: $visibility, tint: VoidPalette.bills,
+                                note: visibility == Visibility.me.rawValue ? "Personal spending. Only you see it, and nobody owes you for it." : "House spending, added to the project total.")
+                if visibility == Visibility.house.rawValue {
+                    Toggle("I paid: split it equally between everyone", isOn: $split).tint(VoidPalette.bills).foregroundColor(.white)
+                        .padding(12).voidCard(cornerRadius: 16)
+                }
+            }
         }
+    }
+
+    private func save() {
+        let value = Money.parse(amount) ?? 0
+        let trimmed = note.trimmingCharacters(in: .whitespaces)
+        if houseProject {
+            let spend = ProjectSpend(amount: value, note: trimmed)
+            modelContext.insert(spend)
+            spend.project = project
+            spend.visibilityRaw = visibility
+            if visibility == Visibility.house.rawValue {
+                project.actualCost += value
+                if split, let me = HouseContext.uid {
+                    spend.paidByUid = me
+                    spend.sharesJSON = SplitJSON.encode(HouseSplit.shares(of: value, mode: "equal", custom: [:]))
+                }
+            }
+        } else {
+            project.actualCost += value
+        }
+        if !trimmed.isEmpty && (visibility == Visibility.house.rawValue || !houseProject) {
+            let line = "\(DayText.short(Date())): \(Money.format(value)) · \(trimmed)"
+            project.notes = project.notes.isEmpty ? line : project.notes + "\n" + line
+        }
+        try? modelContext.save()
     }
 }
 
@@ -366,6 +398,7 @@ struct EditProjectSheet: View {
     @State private var budget = ""
     @State private var spent = ""
     @State private var notes = ""
+    @State private var visibility = Visibility.house.rawValue
     @State private var loaded = false
 
     var body: some View {
@@ -378,11 +411,14 @@ struct EditProjectSheet: View {
             GlassTextField(title: "Budget", text: $budget, icon: "target", tint: VoidPalette.bills, keyboardType: .decimalPad)
             GlassTextField(title: "Spent so far", text: $spent, icon: Money.symbolName(filled: false), tint: VoidPalette.bills, keyboardType: .decimalPad)
             GlassTextField(title: "Notes", text: $notes, icon: "note.text", tint: VoidPalette.muted, isMultiline: true)
+            VisibilityField(raw: $visibility, createdBy: project?.createdBy ?? "", tint: VoidPalette.projects,
+                            note: visibility == Visibility.me.rawValue ? "A personal project. Only you can see it." : "A house project. Spending added to it can be split between everyone.")
         }
         .onAppear {
             guard !loaded else { return }
             loaded = true
             guard let project else { return }
+            visibility = project.visibilityRaw
             title = project.title; details = project.projectDescription; status = project.status
             startDate = project.startDate; endDate = project.endDate
             budget = project.budget > 0 ? Money.editString(project.budget) : ""
@@ -405,6 +441,7 @@ struct EditProjectSheet: View {
         target.budget = Money.parse(budget) ?? 0
         target.actualCost = Money.parse(spent) ?? 0
         target.notes = notes
+        target.visibilityRaw = visibility
         try? modelContext.save()
     }
 }

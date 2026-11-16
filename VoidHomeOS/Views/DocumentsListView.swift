@@ -399,6 +399,7 @@ struct AddDocumentView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
 
+    @State private var visibility = HouseContext.isShared ? Visibility.me.rawValue : Visibility.house.rawValue
     @State private var title = ""
     @State private var type: DocumentType = .manual
     @State private var ocrText = ""
@@ -513,6 +514,8 @@ struct AddDocumentView: View {
                                 }
                             RoomPickerField(selection: $selectedRoom)
                             DocumentExtraLinksFields(warranty: $selectedWarranty, bill: $selectedBill, project: $selectedProject, maintenance: $selectedMaintenance, expiryDate: $expiryDate)
+                            VisibilityField(raw: $visibility, tint: VoidPalette.documents,
+                                            note: visibility == Visibility.me.rawValue ? "New documents are private until you share them." : "Everyone in the house can see this document.")
 
                             if type == .receipt, let info = receiptInfo, info.total > 0 || info.date != nil || !info.retailer.isEmpty {
                                 receiptCard(info)
@@ -661,6 +664,7 @@ struct AddDocumentView: View {
         document.project = selectedProject
         document.maintenance = selectedMaintenance
         document.expiryDate = expiryDate
+        document.visibilityRaw = visibility
         NotificationService.shared.syncDocumentExpiryReminder(for: document)
 
         if type == .receipt, applyReceiptToAsset, let asset = selectedAsset, let info = receiptInfo {
@@ -752,6 +756,7 @@ struct EditDocumentView: View {
                             AssetPickerField(selection: $document.asset)
                             RoomPickerField(selection: $document.room)
                             DocumentExtraLinksFields(warranty: $document.warranty, bill: $document.bill, project: $document.project, maintenance: $document.maintenance, expiryDate: $document.expiryDate)
+                            VisibilityField(raw: $document.visibilityRaw, createdBy: document.createdBy, tint: VoidPalette.documents)
 
                             GlassTextField(title: "Text", text: $document.ocrText, icon: "text.viewfinder", tint: Color(red: 0.35, green: 0.3, blue: 0.65), isMultiline: true)
                         }

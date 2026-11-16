@@ -7,6 +7,14 @@ import SwiftData
 /// opensInward determines whether the door swings into the room (true) or out of it (false)
 @Model
 final class Door {
+    // Sync for shared households. Every field has a default, so the lightweight migration stays safe.
+    var syncId: String = ""
+    var visibilityRaw: String = "house"   // "house" (Everyone) or "me" (Just me)
+    var createdBy: String = ""
+    var updatedBy: String = ""
+    var syncHash: String = ""
+    var syncScope: String = ""
+
     var edge: DoorEdge
     var position: Double
     var opensLeft: Bool = true

@@ -1,0 +1,26 @@
+rules_version = '2';
+
+// Photos and scanned documents for shared households. Needs Firebase Storage,
+// which on new projects requires the Blaze (pay-as-you-go) plan.
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function isMember(houseId) {
+      return request.auth != null
+        && request.auth.uid in firestore.get(/databases/(default)/documents/houses/$(houseId)).data.memberIds;
+    }
+
+    // Shared files: houses/{houseId}/files/{syncId}/{fileName}
+    match /houses/{houseId}/files/{syncId}/{fileName} {
+      allow read: if isMember(houseId);
+      allow write: if isMember(houseId) && request.resource.size < 25 * 1024 * 1024;
+      allow delete: if isMember(houseId);
+    }
+
+    // Private files: houses/{houseId}/private/{uid}/files/{syncId}/{fileName}
+    match /houses/{houseId}/private/{uid}/files/{syncId}/{fileName} {
+      allow read, delete: if isMember(houseId) && request.auth.uid == uid;
+      allow write: if isMember(houseId) && request.auth.uid == uid && request.resource.size < 25 * 1024 * 1024;
+    }
+  }
+}
