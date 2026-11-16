@@ -2,138 +2,339 @@ import SwiftUI
 import SwiftData
 import UniformTypeIdentifiers
 import QuickLook
+import QuickLookThumbnailing
 
+
+extension DocumentType {
+    var icon: String {
+        switch self {
+        case .manual: return "book.closed.fill"
+        case .receipt: return "receipt"
+        case .invoice: return "doc.text.fill"
+        case .certificate: return "rosette"
+        case .guarantee: return "checkmark.seal.fill"
+        case .other: return "folder.fill"
+        }
+    }
+    var folderColor: Color {
+        switch self {
+        case .manual: return Color(red: 0.35, green: 0.55, blue: 0.85)
+        case .receipt: return Color(red: 0.4, green: 0.7, blue: 0.5)
+        case .invoice: return Color(red: 0.85, green: 0.6, blue: 0.35)
+        case .certificate: return Color(red: 0.7, green: 0.45, blue: 0.8)
+        case .guarantee: return Color(red: 0.8, green: 0.45, blue: 0.5)
+        case .other: return Color(red: 0.5, green: 0.5, blue: 0.6)
+        }
+    }
+}
+
+/// Documents as a filing cabinet: one coloured folder per type, with first-page previews.
 struct DocumentsListView: View {
     @Environment(\.modelContext) private var modelContext
-    @Environment(\.dismiss) private var dismiss
-    @Query(sort: \Document.title) private var documents: [Document]
-    @State private var showingAddDocument = false
+    @Query(sort: \Document.createdAt, order: .reverse) private var documents: [Document]
+    @State private var showingAdd = false
     @State private var searchText = ""
-    @State private var previewURL: URL?
+    @State private var openFolder: DocumentType?
 
-    var filteredDocuments: [Document] {
-        if searchText.isEmpty { return documents }
-        return documents.filter {
-            $0.title.localizedCaseInsensitiveContains(searchText) ||
-            $0.type.rawValue.localizedCaseInsensitiveContains(searchText)
+    private var filtered: [Document] {
+        documents.filter { doc in
+            (openFolder == nil || doc.type == openFolder) &&
+            (searchText.isEmpty || doc.title.localizedCaseInsensitiveContains(searchText) || doc.notes.localizedCaseInsensitiveContains(searchText) ||
+             (doc.ocrText ?? "").localizedCaseInsensitiveContains(searchText) || (doc.vendor ?? "").localizedCaseInsensitiveContains(searchText))
         }
     }
 
     var body: some View {
-        ZStack {
-            StarryBackground()
-                .ignoresSafeArea()
+        VoidPage(subtitle: openFolder.map { "Documents · \($0.rawValue)" } ?? "Documents", addAction: { showingAdd = true }) {
+            if !documents.isEmpty {
+                VoidSearchField(prompt: "Search titles and text inside scans", text: $searchText)
+            }
 
-            ScrollView {
-                VStack(spacing: 28) {
-                    HStack(alignment: .top) {
-                        VStack(alignment: .leading, spacing: 10) {
-                            Button(action: { dismiss() }) {
-                                HStack(spacing: 4) {
-                                    Image(systemName: "chevron.left").font(.system(size: 16, weight: .semibold))
-                                    Text("Back").font(.system(size: 16))
-                                }
-                                .foregroundColor(.white.opacity(0.8))
-                            }
-                            .padding(.bottom, 4)
-                            Text("VOID")
-                                .font(.system(size: 44, weight: .ultraLight, design: .default))
-                                .foregroundColor(.white)
-                                .tracking(6)
-                                .shadow(color: Color.purple.opacity(0.3), radius: 20, x: 0, y: 0)
-                            Text("DOCUMENTS")
-                                .font(.system(size: 13, weight: .medium))
-                                .foregroundColor(Color(red: 0.55, green: 0.5, blue: 0.65))
-                                .tracking(3)
-                        }
-                        Spacer()
-                        Button(action: { showingAddDocument = true }) {
-                            Image(systemName: "plus")
-                                .font(.system(size: 18, weight: .semibold))
-                                .foregroundColor(.white)
-                                .frame(width: 44, height: 44)
-                                .background(Color.white.opacity(0.08))
-                                .clipShape(Circle())
-                                .overlay(Circle().stroke(Color.white.opacity(0.12), lineWidth: 0.5))
-                        }
-                        .padding(.top, 4)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 24)
-                    .padding(.top, 50)
+            if documents.isEmpty {
+                EmptyStateView(icon: "doc.viewfinder", text: "Scan or import manuals, receipts and certificates. The text in scans is read so you can search it.", buttonTitle: "Add a document") { showingAdd = true }
+            }
 
-                    HStack {
-                        Image(systemName: "magnifyingglass")
-                            .foregroundColor(Color(red: 0.5, green: 0.45, blue: 0.6))
-                        TextField("Search documents", text: $searchText)
-                            .font(.system(size: 16))
-                            .foregroundColor(.white)
-                    }
-                    .padding(14)
-                    .background(
-                        RoundedRectangle(cornerRadius: 16, style: .continuous)
-                            .fill(Color.white.opacity(0.04))
-                            .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Color.white.opacity(0.06), lineWidth: 0.5))
-                    )
-                    .padding(.horizontal, 24)
-
-                    VStack(spacing: 12) {
-                        if filteredDocuments.isEmpty {
-                            VStack(spacing: 16) {
-                                Image(systemName: "doc.fill")
-                                    .font(.system(size: 48, weight: .thin))
-                                    .foregroundColor(Color(red: 0.3, green: 0.45, blue: 0.6))
-                                Text("No documents yet")
-                                    .font(.system(size: 16))
-                                    .foregroundColor(Color(red: 0.5, green: 0.45, blue: 0.6))
-                                Button(action: { showingAddDocument = true }) {
-                                    Text("Upload Document")
-                                        .font(.system(size: 14, weight: .medium))
-                                        .foregroundColor(.white)
-                                        .padding(.horizontal, 20)
-                                        .padding(.vertical, 10)
-                                        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color(red: 0.2, green: 0.45, blue: 0.65)))
-                                }
-                            }
-                            .padding(.vertical, 40)
-                        } else {
-                            ForEach(filteredDocuments) { document in
-                                NavigationLink(destination: DocumentDetailView(document: document)) {
-                                    DocumentRow(document: document)
-                                }
-                                .buttonStyle(PlainButtonStyle())
-                                .contextMenu {
-                                    if let url = document.localFileURL {
-                                        Button {
-                                            previewURL = url
-                                        } label: {
-                                            Label("View File", systemImage: "eye")
-                                        }
-                                    }
-                                    Button(role: .destructive) {
-                                        withAnimation {
-                                            document.deleteStoredFile()
-                                            modelContext.delete(document)
-                                        }
-                                    } label: {
-                                        Label("Delete", systemImage: "trash")
-                                    }
-                                }
-                            }
+            if searchText.isEmpty && !documents.isEmpty {
+                LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 14) {
+                    ForEach(DocumentType.allCases, id: \.self) { type in
+                        let count = documents.filter { $0.type == type }.count
+                        Button(action: { withAnimation(.easeInOut(duration: 0.2)) { openFolder = openFolder == type ? nil : type } }) {
+                            FolderTile(type: type, count: count, isOpen: openFolder == type)
                         }
+                        .buttonStyle(.plain)
+                        .opacity(count == 0 ? 0.45 : 1)
                     }
-                    .padding(.horizontal, 24)
-                    .padding(.bottom, 40)
                 }
+                .padding(.horizontal, 24)
             }
-            .sheet(isPresented: $showingAddDocument) {
-                AddDocumentView()
+
+            let expiring = documents.filter { d in d.expiryDate.map { $0 > Date() && $0 < (Calendar.current.date(byAdding: .day, value: 60, to: Date()) ?? Date()) } ?? false }
+            if !expiring.isEmpty && openFolder == nil && searchText.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    GlassSectionHeader(title: "Expiring soon")
+                    ForEach(expiring) { doc in
+                        LinkRow(icon: "calendar.badge.clock", tint: VoidPalette.amber, title: doc.title, subtitle: "Expires \(DayText.short(doc.expiryDate!))") { DocumentDetailView(document: doc) }
+                    }
+                }
+                .padding(.horizontal, 24)
             }
-            .sheet(item: $previewURL) { url in
-                DocumentPreviewSheet(url: url)
+
+            if !filtered.isEmpty {
+                VStack(alignment: .leading, spacing: 10) {
+                    GlassSectionHeader(title: openFolder == nil && searchText.isEmpty ? "Recent" : "\(filtered.count) found")
+                    LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) {
+                        ForEach(openFolder == nil && searchText.isEmpty ? Array(filtered.prefix(8)) : filtered) { doc in
+                            NavigationLink(destination: DocumentDetailView(document: doc)) { DocumentCard(document: doc, highlight: searchText) }
+                                .buttonStyle(.plain)
+                                .contextMenu {
+                                    Button(role: .destructive) { deleteDocument(doc) } label: { Label("Delete", systemImage: "trash") }
+                                }
+                        }
+                    }
+                }
+                .padding(.horizontal, 24)
+            } else if !documents.isEmpty && !searchText.isEmpty {
+                EmptyStateView(icon: "magnifyingglass", text: "Nothing matches.")
             }
         }
-        .navigationBarHidden(true)
+        .sheet(isPresented: $showingAdd) { AddDocumentView() }
+    }
+
+    private func deleteDocument(_ doc: Document) {
+        NotificationService.shared.cancelDocumentExpiryReminder(for: doc)
+        if let url = doc.localFileURL { try? FileManager.default.removeItem(at: url) }
+        modelContext.delete(doc)
+    }
+}
+
+struct FolderTile: View {
+    let type: DocumentType
+    let count: Int
+    let isOpen: Bool
+    var body: some View {
+        VStack(spacing: 6) {
+            ZStack(alignment: .bottomLeading) {
+                Image(systemName: isOpen ? "folder.fill.badge.minus" : "folder.fill")
+                    .font(.system(size: 46))
+                    .foregroundStyle(LinearGradient(colors: [type.folderColor, type.folderColor.opacity(0.6)], startPoint: .top, endPoint: .bottom))
+                Image(systemName: type.icon).font(.system(size: 13, weight: .bold)).foregroundColor(.white.opacity(0.9)).padding(.leading, 8).padding(.bottom, 8)
+            }
+            Text(type.rawValue).font(.system(size: 12, weight: .medium)).foregroundColor(.white)
+            Text("\(count)").font(.system(size: 11)).foregroundColor(VoidPalette.muted)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 12)
+        .voidCard(cornerRadius: 16, tint: isOpen ? type.folderColor : nil)
+    }
+}
+
+/// First-page thumbnail of a stored file, made with QuickLook.
+struct DocumentThumbnail: View {
+    let document: Document
+    @State private var image: UIImage?
+
+    var body: some View {
+        GeometryReader { geo in
+            ZStack {
+                LinearGradient(colors: [document.type.folderColor.opacity(0.35), document.type.folderColor.opacity(0.1)], startPoint: .top, endPoint: .bottom)
+                if let image {
+                    Image(uiImage: image).resizable().scaledToFill().frame(width: geo.size.width, height: geo.size.height).clipped()
+                } else {
+                    Image(systemName: document.type.icon).font(.system(size: 28, weight: .light)).foregroundColor(.white.opacity(0.8))
+                }
+            }
+            .task(id: document.fileName) { await load(size: geo.size) }
+        }
+    }
+
+    private func load(size: CGSize) async {
+        guard let url = document.localFileURL, FileManager.default.fileExists(atPath: url.path) else { return }
+        let request = QLThumbnailGenerator.Request(fileAt: url, size: CGSize(width: max(size.width, 120), height: max(size.height, 120)), scale: UIScreen.main.scale, representationTypes: .thumbnail)
+        if let rep = try? await QLThumbnailGenerator.shared.generateBestRepresentation(for: request) {
+            await MainActor.run { image = rep.uiImage }
+        }
+    }
+}
+
+struct DocumentCard: View {
+    let document: Document
+    var highlight: String = ""
+
+    /// A short piece of the scanned text around the search words.
+    private var snippet: String? {
+        guard !highlight.isEmpty, let text = document.ocrText, let range = text.range(of: highlight, options: .caseInsensitive) else { return nil }
+        let start = text.index(range.lowerBound, offsetBy: -30, limitedBy: text.startIndex) ?? text.startIndex
+        let end = text.index(range.upperBound, offsetBy: 40, limitedBy: text.endIndex) ?? text.endIndex
+        return (start > text.startIndex ? "…" : "") + text[start..<end].replacingOccurrences(of: "\n", with: " ") + (end < text.endIndex ? "…" : "")
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            DocumentThumbnail(document: document).frame(height: 110).clipped()
+            VStack(alignment: .leading, spacing: 3) {
+                Text(document.title).font(.system(size: 13, weight: .semibold)).foregroundColor(.white).lineLimit(1)
+                HStack(spacing: 4) {
+                    Circle().fill(document.type.folderColor).frame(width: 6, height: 6)
+                    Text(document.type.rawValue).font(.system(size: 11)).foregroundColor(VoidPalette.muted)
+                }
+                if let snippet {
+                    HighlightedText(text: snippet, highlight: highlight).font(.system(size: 11)).lineLimit(3)
+                }
+            }
+            .padding(10)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .voidCard(cornerRadius: 16)
+    }
+}
+
+/// Text with the matching words picked out.
+struct HighlightedText: View {
+    let text: String
+    let highlight: String
+    var body: some View {
+        Text(attributed)
+    }
+    private var attributed: AttributedString {
+        var result = AttributedString(text)
+        result.foregroundColor = VoidPalette.muted
+        guard !highlight.isEmpty else { return result }
+        var searchStart = result.startIndex
+        while searchStart < result.endIndex, let range = result[searchStart...].range(of: highlight, options: .caseInsensitive) {
+            result[range].foregroundColor = .white
+            result[range].backgroundColor = VoidPalette.accent.opacity(0.45)
+            searchStart = range.upperBound
+        }
+        return result
+    }
+}
+
+struct DocumentDetailView: View {
+    @Environment(\.modelContext) private var modelContext
+    @Environment(\.dismiss) private var dismiss
+    @Bindable var document: Document
+    @State private var showingEdit = false
+    @State private var previewURL: URL?
+    @State private var confirmDelete = false
+    @State private var showText = false
+
+    var body: some View {
+        VoidPage(subtitle: "Document") {
+            VStack(alignment: .leading, spacing: 18) {
+                Button(action: { if let url = document.localFileURL { previewURL = url } }) {
+                    ZStack(alignment: .bottomTrailing) {
+                        DocumentThumbnail(document: document)
+                            .frame(height: 240)
+                            .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                        if document.localFileURL != nil {
+                            Label("Open", systemImage: "arrow.up.left.and.arrow.down.right")
+                                .font(.system(size: 12, weight: .semibold)).foregroundColor(.white)
+                                .padding(.horizontal, 10).padding(.vertical, 6)
+                                .background(Capsule().fill(Color.black.opacity(0.5)))
+                                .padding(10)
+                        }
+                    }
+                }
+                .buttonStyle(.plain)
+
+                HStack(alignment: .top) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(document.title).font(.system(size: 26, weight: .light)).foregroundColor(.white)
+                        HStack(spacing: 6) {
+                            TagLabel(text: document.type.rawValue, color: document.type.folderColor)
+                            Text(DayText.short(document.createdAt)).font(.system(size: 12)).foregroundColor(VoidPalette.muted)
+                        }
+                    }
+                    Spacer()
+                    CircleIconButton(icon: "pencil", size: 38) { showingEdit = true }
+                }
+
+                VStack(spacing: 10) {
+                    if let vendor = document.vendor, !vendor.isEmpty { GlassDetailCard(label: "FROM", value: vendor, icon: "building.2", tint: VoidPalette.documents) }
+                    if let amount = document.amount { GlassDetailCard(label: "AMOUNT", value: Money.format(amount), icon: Money.symbolName(filled: true), tint: VoidPalette.bills) }
+                    if let expiry = document.expiryDate {
+                        GlassDetailCard(label: expiry < Date() ? "EXPIRED" : "EXPIRES", value: DayText.short(expiry), icon: "calendar.badge.clock", tint: VoidPalette.amber)
+                    }
+                    if !document.notes.isEmpty { GlassDetailCard(label: "NOTES", value: document.notes, icon: "note.text", tint: VoidPalette.muted) }
+                }
+
+                let linkCount = [document.asset == nil, document.room == nil, document.warranty == nil, document.bill == nil, document.project == nil, document.maintenance == nil].filter { !$0 }.count
+                LinkedSection(title: "Linked", count: linkCount, addTitle: "Edit links", addAction: { showingEdit = true }) {
+                    if let asset = document.asset {
+                        LinkRow(icon: "cube.fill", tint: VoidPalette.assets, title: asset.name, subtitle: "Asset") { AssetDetailView(asset: asset) }
+                    }
+                    if let room = document.room {
+                        LinkRow(icon: "square.grid.2x2.fill", tint: VoidPalette.rooms, title: room.name, subtitle: "Room") { RoomDetailView(room: room) }
+                    }
+                    if let warranty = document.warranty {
+                        LinkRow(icon: "shield.fill", tint: VoidPalette.warranties, title: warranty.asset?.name ?? warranty.provider, subtitle: "Warranty") { WarrantyDetailView(warranty: warranty) }
+                    }
+                    if let bill = document.bill {
+                        LinkRow(icon: "creditcard.fill", tint: VoidPalette.bills, title: bill.name, subtitle: "Bill") { BillDetailView(bill: bill) }
+                    }
+                    if let project = document.project {
+                        LinkRow(icon: "hammer.fill", tint: VoidPalette.projects, title: project.title, subtitle: "Project") { ProjectDetailView(project: project) }
+                    }
+                    if let record = document.maintenance {
+                        LinkRow(icon: "wrench.and.screwdriver.fill", tint: VoidPalette.maintenance, title: record.task, subtitle: "Maintenance") { MaintenanceDetailView(maintenance: record) }
+                    }
+                }
+
+                if let text = document.ocrText, !text.isEmpty {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Button(action: { withAnimation { showText.toggle() } }) {
+                            HStack {
+                                GlassSectionHeader(title: "Text read from the scan")
+                                Image(systemName: showText ? "chevron.up" : "chevron.down").foregroundColor(VoidPalette.muted)
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        if showText {
+                            Text(text).font(.system(size: 13)).foregroundColor(.white.opacity(0.85)).textSelection(.enabled)
+                                .frame(maxWidth: .infinity, alignment: .leading).padding(14).voidCard(cornerRadius: 14)
+                        }
+                    }
+                }
+
+                Button(role: .destructive, action: { confirmDelete = true }) {
+                    Label("Delete document", systemImage: "trash").font(.system(size: 14)).foregroundColor(VoidPalette.muted)
+                }
+            }
+            .padding(.horizontal, 24)
+        }
+        .sheet(isPresented: $showingEdit) { EditDocumentView(document: document) }
+        .quickLookPreview($previewURL)
+        .confirmationDialog("Delete this document and its file?", isPresented: $confirmDelete, titleVisibility: .visible) {
+            Button("Delete", role: .destructive) {
+                NotificationService.shared.cancelDocumentExpiryReminder(for: document)
+                if let url = document.localFileURL { try? FileManager.default.removeItem(at: url) }
+                modelContext.delete(document)
+                dismiss()
+            }
+        }
+    }
+}
+
+/// Optional links and expiry date for the add and edit document forms.
+struct DocumentExtraLinksFields: View {
+    @Binding var warranty: Warranty?
+    @Binding var bill: Bill?
+    @Binding var project: Project?
+    @Binding var maintenance: Maintenance?
+    @Binding var expiryDate: Date?
+    @Query(sort: \Warranty.provider) private var warranties: [Warranty]
+    @Query(sort: \Bill.name) private var bills: [Bill]
+    @Query(sort: \Project.title) private var projects: [Project]
+    @Query(sort: \Maintenance.date, order: .reverse) private var records: [Maintenance]
+
+    var body: some View {
+        VStack(spacing: 14) {
+            MenuPickerField(title: "Warranty", selection: $warranty, options: warranties) { ($0.asset?.name).map { n in "\(n) · \($0.provider)" } ?? $0.provider }
+            MenuPickerField(title: "Bill", selection: $bill, options: bills) { $0.name }
+            MenuPickerField(title: "Project", selection: $project, options: projects) { $0.title }
+            MenuPickerField(title: "Maintenance", selection: $maintenance, options: records) { "\($0.task) · \(DayText.short($0.date))" }
+            OptionalDateField(title: "Expiry date (e.g. gas safety)", date: $expiryDate)
+        }
     }
 }
 
@@ -196,202 +397,6 @@ struct DocumentPreviewView: UIViewControllerRepresentable {
     }
 }
 
-// MARK: - Document Row
-struct DocumentRow: View {
-    let document: Document
-
-    var body: some View {
-        HStack(spacing: 16) {
-            ZStack {
-                Circle()
-                    .fill(Color.white.opacity(0.04))
-                    .frame(width: 50, height: 50)
-                    .overlay(
-                        Circle().stroke(
-                            LinearGradient(
-                                colors: [Color.white.opacity(0.15), Color.white.opacity(0.05), Color.clear],
-                                startPoint: .topLeading, endPoint: .bottomTrailing
-                            ),
-                            lineWidth: 0.5
-                        )
-                    )
-                Image(systemName: document.localFileURL != nil ? "doc.fill" : "doc.text")
-                    .font(.system(size: 20, weight: .medium))
-                    .foregroundColor(Color(red: 0.2, green: 0.55, blue: 0.7))
-            }
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text(document.title)
-                    .font(.system(size: 17, weight: .medium))
-                    .foregroundColor(.white)
-                HStack(spacing: 6) {
-                    Text(document.type.rawValue)
-                        .font(.system(size: 14))
-                        .foregroundColor(Color(red: 0.6, green: 0.55, blue: 0.7))
-                    if document.localFileURL != nil {
-                        Text("•")
-                            .font(.system(size: 12))
-                            .foregroundColor(Color(red: 0.4, green: 0.35, blue: 0.5))
-                        Text(document.fileExtension?.uppercased() ?? "FILE")
-                            .font(.system(size: 11, weight: .bold))
-                            .foregroundColor(Color(red: 0.3, green: 0.55, blue: 0.6))
-                    }
-                }
-            }
-
-            Spacer()
-
-            if document.localFileURL != nil {
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 12))
-                    .foregroundColor(.white.opacity(0.3))
-            }
-        }
-        .padding(.vertical, 8)
-        .padding(.horizontal, 16)
-        .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(Color.white.opacity(0.02))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .stroke(
-                            LinearGradient(
-                                colors: [Color.white.opacity(0.08), Color.white.opacity(0.02), Color.clear],
-                                startPoint: .topLeading, endPoint: .bottomTrailing
-                            ),
-                            lineWidth: 0.5
-                        )
-                )
-        )
-    }
-}
-
-// MARK: - Document Detail View
-struct DocumentDetailView: View {
-    @Environment(\.modelContext) private var modelContext
-    @Environment(\.dismiss) private var dismiss
-    @Bindable var document: Document
-    @State private var showingEditDocument = false
-    @State private var previewURL: URL?
-
-    var body: some View {
-        ZStack {
-            StarryBackground()
-                .ignoresSafeArea()
-
-            ScrollView {
-                VStack(spacing: 20) {
-                    HStack(alignment: .top) {
-                        VStack(alignment: .leading, spacing: 10) {
-                            Button(action: { dismiss() }) {
-                                HStack(spacing: 4) {
-                                    Image(systemName: "chevron.left").font(.system(size: 16, weight: .semibold))
-                                    Text("Back").font(.system(size: 16))
-                                }
-                                .foregroundColor(.white.opacity(0.8))
-                            }
-                            .padding(.bottom, 4)
-                            Text("VOID")
-                                .font(.system(size: 44, weight: .ultraLight, design: .default))
-                                .foregroundColor(.white)
-                                .tracking(6)
-                                .shadow(color: Color.purple.opacity(0.3), radius: 20, x: 0, y: 0)
-                            Text("DOCUMENT")
-                                .font(.system(size: 13, weight: .medium))
-                                .foregroundColor(Color(red: 0.55, green: 0.5, blue: 0.65))
-                                .tracking(3)
-                        }
-                        Spacer()
-                        Button(action: { showingEditDocument = true }) {
-                            Image(systemName: "pencil")
-                                .font(.system(size: 16, weight: .semibold))
-                                .foregroundColor(.white)
-                                .frame(width: 44, height: 44)
-                                .background(Color.white.opacity(0.08))
-                                .clipShape(Circle())
-                                .overlay(Circle().stroke(Color.white.opacity(0.12), lineWidth: 0.5))
-                        }
-                        .padding(.top, 4)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 24)
-                    .padding(.top, 50)
-
-                    VStack(spacing: 16) {
-                        GlassDetailCard(label: "Title", value: document.title, icon: "textformat", tint: Color(red: 0.2, green: 0.55, blue: 0.7))
-                        GlassDetailCard(label: "Type", value: document.type.rawValue, icon: "doc.fill", tint: Color(red: 0.35, green: 0.3, blue: 0.65))
-
-                        if let asset = document.asset {
-                            NavigationLink(destination: AssetDetailView(asset: asset)) {
-                                GlassDetailCard(label: "Linked Asset", value: asset.name, icon: "cube.fill", tint: Color(red: 0.55, green: 0.3, blue: 0.6))
-                            }
-                            .buttonStyle(PlainButtonStyle())
-                        }
-
-                        if let room = document.room ?? document.asset?.room {
-                            NavigationLink(destination: RoomDetailView(room: room)) {
-                                GlassDetailCard(label: document.room == nil ? "Room (via asset)" : "Room", value: "\(room.name) · \(room.floorDisplay)", icon: "square.split.bottomrightquarter", tint: Color(red: 0.25, green: 0.45, blue: 0.75))
-                            }
-                            .buttonStyle(PlainButtonStyle())
-                        }
-
-                        if let url = document.localFileURL {
-                            // View file button
-                            Button(action: { previewURL = url }) {
-                                HStack(spacing: 8) {
-                                    Image(systemName: "eye.fill")
-                                        .font(.system(size: 16))
-                                    Text("View Document")
-                                        .font(.system(size: 15, weight: .medium))
-                                }
-                                .foregroundColor(.white)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 14)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                        .fill(Color(red: 0.2, green: 0.45, blue: 0.65).opacity(0.3))
-                                        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Color(red: 0.2, green: 0.45, blue: 0.65), lineWidth: 1))
-                                )
-                            }
-
-                            GlassDetailCard(label: "File", value: url.lastPathComponent, icon: "paperclip", tint: Color(red: 0.3, green: 0.5, blue: 0.55))
-                        }
-
-                        if !document.ocrText.isEmpty {
-                            VStack(alignment: .leading, spacing: 12) {
-                                Text("OCR TEXT")
-                                    .font(.system(size: 11, weight: .semibold))
-                                    .foregroundColor(Color(red: 0.5, green: 0.45, blue: 0.6))
-                                    .tracking(2)
-                                Text(document.ocrText)
-                                    .font(.system(size: 15))
-                                    .foregroundColor(.white)
-                                    .padding(12)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .background(
-                                        RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                            .fill(Color.white.opacity(0.02))
-                                            .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Color.white.opacity(0.05), lineWidth: 0.5))
-                                    )
-                            }
-                        }
-                    }
-                    .padding(.horizontal, 24)
-                    .padding(.bottom, 40)
-                }
-            }
-            .sheet(isPresented: $showingEditDocument) {
-                EditDocumentView(document: document)
-            }
-            .sheet(item: $previewURL) { url in
-                DocumentPreviewSheet(url: url)
-            }
-        }
-        .navigationBarHidden(true)
-    }
-}
-
-// MARK: - Add Document View
 struct AddDocumentView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
@@ -404,6 +409,11 @@ struct AddDocumentView: View {
     @State private var pickedFileName: String?
     @State private var selectedAsset: Asset?
     @State private var selectedRoom: Room?
+    @State private var selectedWarranty: Warranty?
+    @State private var selectedBill: Bill?
+    @State private var selectedProject: Project?
+    @State private var selectedMaintenance: Maintenance?
+    @State private var expiryDate: Date?
 
     // Scanning and text reading
     @State private var showingScanner = false
@@ -504,6 +514,7 @@ struct AddDocumentView: View {
                                     if selectedRoom == nil, let room = asset?.room { selectedRoom = room }
                                 }
                             RoomPickerField(selection: $selectedRoom)
+                            DocumentExtraLinksFields(warranty: $selectedWarranty, bill: $selectedBill, project: $selectedProject, maintenance: $selectedMaintenance, expiryDate: $expiryDate)
 
                             if type == .receipt, let info = receiptInfo, info.total > 0 || info.date != nil || !info.retailer.isEmpty {
                                 receiptCard(info)
@@ -647,6 +658,12 @@ struct AddDocumentView: View {
         document.asset = selectedAsset
         document.room = selectedRoom
         modelContext.insert(document)
+        document.warranty = selectedWarranty
+        document.bill = selectedBill
+        document.project = selectedProject
+        document.maintenance = selectedMaintenance
+        document.expiryDate = expiryDate
+        NotificationService.shared.syncDocumentExpiryReminder(for: document)
 
         if type == .receipt, applyReceiptToAsset, let asset = selectedAsset, let info = receiptInfo {
             if asset.purchasePrice == 0, info.total > 0 { asset.purchasePrice = info.total }
@@ -736,6 +753,7 @@ struct EditDocumentView: View {
 
                             AssetPickerField(selection: $document.asset)
                             RoomPickerField(selection: $document.room)
+                            DocumentExtraLinksFields(warranty: $document.warranty, bill: $document.bill, project: $document.project, maintenance: $document.maintenance, expiryDate: $document.expiryDate)
 
                             GlassTextField(title: "Text", text: $document.ocrText, icon: "text.viewfinder", tint: Color(red: 0.35, green: 0.3, blue: 0.65), isMultiline: true)
                         }
@@ -752,7 +770,10 @@ struct EditDocumentView: View {
                             .foregroundColor(.white.opacity(0.8))
                     }
                     ToolbarItem(placement: .navigationBarTrailing) {
-                        Button("Save") { dismiss() }
+                        Button("Save") {
+                            NotificationService.shared.syncDocumentExpiryReminder(for: document)
+                            dismiss()
+                        }
                             .font(.system(size: 16, weight: .semibold))
                             .foregroundColor(Color(red: 0.2, green: 0.55, blue: 0.7))
                     }
