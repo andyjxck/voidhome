@@ -90,4 +90,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           ls -la smoke || true
-          gh release upload android-debug smoke/* --clobber || true
+          for f in smoke/*; do
+            [ -s "$f" ] || continue
+            gh release upload android-debug "$f" --clobber || echo "upload failed: $f"
+          done
