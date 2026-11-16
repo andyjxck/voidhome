@@ -1,4 +1,4 @@
-package com.void.homeos.ui
+package com.voidhome.app.ui
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
@@ -9,7 +9,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.google.firebase.Timestamp
-import com.void.homeos.data.*
+import com.voidhome.app.data.*
 
 sealed class F(val key: String, val label: String) {
     class Text(k: String, l: String, val multi: Boolean = false) : F(k, l)
@@ -194,9 +194,13 @@ private fun prepareRoom(data: MutableMap<String, Any?>, existing: Rec?) {
     data["dimensions"] = Plan.dimensions(w, h)
     val floor = (data["floorNumber"] as? Number)?.toInt() ?: 0
     data["floorNumber"] = floor
-    if (existing == null || data["planX"] == null) {
+    data["floor"] = floorDisplay(floor)
+    val movedFloor = existing != null && existing.i("floorNumber") != floor
+    if (existing == null || data["planX"] == null || movedFloor) {
         val others = Repo.of(T.ROOM).filter { it.id != existing?.id && it.i("floorNumber") == floor && it.dn("planX") != null }.map { Plan.worldRects(it) }
-        val c = Plan.freeCenter(0.0 to 0.0, listOf(R(-w / 2, -h / 2, w, h)), 0, others)
+        val pref = if (existing != null) ((data["planX"] as? Number)?.toDouble() ?: 0.0) to ((data["planY"] as? Number)?.toDouble() ?: 0.0) else 0.0 to 0.0
+        val local = existing?.let { Plan.localRects(it).let { l -> listOf(PRect(-w / 2, -h / 2, w, h)) + l.drop(1) } } ?: listOf(PRect(-w / 2, -h / 2, w, h))
+        val c = Plan.freeCenter(pref, local, Plan.quarterTurns((data["rotation"] as? Number)?.toDouble() ?: 0.0), others)
         data["planX"] = c.first; data["planY"] = c.second
     }
 }

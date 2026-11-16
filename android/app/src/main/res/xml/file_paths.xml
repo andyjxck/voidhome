@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- Repo.filesDir = filesDir/VoidFiles -->
+    <files-path name="void_files" path="VoidFiles/" />
+    <cache-path name="cache" path="." />
+</paths>

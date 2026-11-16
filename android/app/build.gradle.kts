@@ -6,7 +6,8 @@ plugins {
 }
 
 android {
-    namespace = "com.void.homeos"
+    namespace = "com.voidhome.app"
+    // applicationId stays com.void.homeos (registered in Firebase); "void" is a Java keyword so it cannot be the code namespace.
     compileSdk = 35
 
     defaultConfig {

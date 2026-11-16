@@ -1,4 +1,4 @@
-package com.void.homeos.ui
+package com.voidhome.app.ui
 
 import android.content.ClipData
 import android.content.Intent
@@ -24,8 +24,8 @@ import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.GoogleAuthProvider
-import com.void.homeos.R
-import com.void.homeos.data.Repo
+import com.voidhome.app.R
+import com.voidhome.app.data.Repo
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 

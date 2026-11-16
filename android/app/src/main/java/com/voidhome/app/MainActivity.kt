@@ -1,4 +1,4 @@
-package com.void.homeos
+package com.voidhome.app
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -12,9 +12,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
-import com.void.homeos.data.Repo
-import com.void.homeos.data.T
-import com.void.homeos.ui.*
+import com.voidhome.app.data.Repo
+import com.voidhome.app.data.T
+import com.voidhome.app.ui.*
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -52,7 +52,7 @@ fun AppShell() {
                 "home" -> HomeDashboard()
                 "todo" -> TodoScreen()
                 "bills" -> BillsScreen()
-                "rooms" -> RoomsScreen()
+                "rooms" -> RoomsScreen(d.id)
                 "timeline" -> TimelineScreen()
                 "search" -> SearchScreen()
                 "house" -> HouseSettingsScreen()
@@ -60,7 +60,7 @@ fun AppShell() {
                 "detail" -> DetailScreen(d.id ?: "")
                 "edit" -> EditScreen(d.type ?: T.ASSET, d.id, d.prefill)
                 "room" -> RoomPage(d.id ?: "")
-                "roomEdit" -> RoomShapeEditor(d.id ?: "")
+                "roomEdit", "roomShape" -> RoomShapeEditor(d.id ?: "")
                 else -> LauncherScreen()
             }
         }

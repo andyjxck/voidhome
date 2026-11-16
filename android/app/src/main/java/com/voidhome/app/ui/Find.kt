@@ -1,4 +1,4 @@
-package com.void.homeos.ui
+package com.voidhome.app.ui
 
 import android.content.Context
 import androidx.compose.foundation.layout.*
@@ -17,7 +17,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.void.homeos.data.*
+import com.voidhome.app.data.*
 
 @Composable
 fun TimelineScreen() {

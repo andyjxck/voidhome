@@ -1,4 +1,4 @@
-package com.void.homeos.data
+package com.voidhome.app.data
 
 import com.google.firebase.Timestamp
 import java.time.Instant

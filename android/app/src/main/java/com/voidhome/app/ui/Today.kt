@@ -1,4 +1,4 @@
-package com.void.homeos.ui
+package com.voidhome.app.ui
 
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -30,7 +30,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.void.homeos.data.*
+import com.voidhome.app.data.*
 import java.time.LocalDate
 import java.time.temporal.ChronoUnit
 

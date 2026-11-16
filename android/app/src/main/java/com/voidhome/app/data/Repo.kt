@@ -1,4 +1,4 @@
-package com.void.homeos.data
+package com.voidhome.app.data
 
 import android.content.Context
 import android.net.Uri

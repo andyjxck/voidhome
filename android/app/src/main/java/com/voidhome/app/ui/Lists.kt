@@ -1,4 +1,4 @@
-package com.void.homeos.ui
+package com.voidhome.app.ui
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.items
@@ -10,7 +10,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.void.homeos.data.*
+import com.voidhome.app.data.*
 
 @Composable
 fun ListScreen(type: String) {

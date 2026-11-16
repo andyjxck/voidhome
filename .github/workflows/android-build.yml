@@ -1,0 +1,93 @@
+name: Android build
+
+on:
+  push:
+    branches: [android-wip]
+    paths:
+      - 'android/**'
+      - '.github/workflows/android-build.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  assemble-debug:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: android
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Build debug APK
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon assembleDebug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: void-home-debug-apk
+          path: android/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+
+      # A public download link with no GitHub sign-in: a pre-release that is replaced on every build.
+      - name: Publish debug APK as a release
+        if: github.ref == 'refs/heads/android-wip'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp app/build/outputs/apk/debug/app-debug.apk void-home-debug.apk
+          gh release delete android-debug --yes --cleanup-tag || true
+          gh release create android-debug void-home-debug.apk \
+            --target "$GITHUB_SHA" --prerelease \
+            --title "Void Home for Android (debug build)" \
+            --notes "Debug build of the android-wip branch at ${GITHUB_SHA}. Built by GitHub Actions. Not tested on a phone or emulator yet."
+
+  # Installs the APK on an Android emulator, opens it and checks it starts without crashing.
+  # It cannot get past Google sign-in, so it only proves the app launches.
+  smoke-test:
+    needs: assemble-debug
+    if: github.ref == 'refs/heads/android-wip'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: void-home-debug-apk
+          path: apk
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Launch on emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: bash .github/scripts/android-smoke.sh
+
+      - name: Attach screenshot and log to the release
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ls -la smoke || true
+          gh release upload android-debug smoke/* --clobber || true

@@ -1,4 +1,4 @@
-package com.void.homeos.ui
+package com.voidhome.app.ui
 
 import android.app.Activity
 import android.content.Intent
@@ -33,7 +33,7 @@ import com.google.mlkit.vision.documentscanner.GmsDocumentScanning
 import com.google.mlkit.vision.documentscanner.GmsDocumentScanningResult
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
-import com.void.homeos.data.*
+import com.voidhome.app.data.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import java.io.File

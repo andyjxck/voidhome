@@ -1,4 +1,4 @@
-package com.void.homeos.ui
+package com.voidhome.app.ui
 
 import androidx.compose.runtime.mutableStateListOf
 

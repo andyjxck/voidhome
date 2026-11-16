@@ -1,4 +1,4 @@
-package com.void.homeos.data
+package com.voidhome.app.data
 
 import java.text.NumberFormat
 import java.time.LocalDate
@@ -426,9 +426,9 @@ object Search {
 
 // ------------------------------------------------------------------ Floor plan geometry (FloorplanGeometry on iOS)
 
-data class R(val x: Double, val y: Double, val w: Double, val h: Double) {
+data class PRect(val x: Double, val y: Double, val w: Double, val h: Double) {
     val minX get() = x; val minY get() = y; val maxX get() = x + w; val maxY get() = y + h
-    fun union(o: R): R { val a = minOf(minX, o.minX); val b = minOf(minY, o.minY); return R(a, b, maxOf(maxX, o.maxX) - a, maxOf(maxY, o.maxY) - b) }
+    fun union(o: PRect): PRect { val a = minOf(minX, o.minX); val b = minOf(minY, o.minY); return PRect(a, b, maxOf(maxX, o.maxX) - a, maxOf(maxY, o.maxY) - b) }
     fun contains(px: Double, py: Double) = px in minX..maxX && py in minY..maxY
 }
 
@@ -444,21 +444,21 @@ object Plan {
     fun height(room: Rec) = room.d("height").takeIf { it > 0 } ?: 3.0
     fun center(room: Rec) = (room.dn("planX") ?: 0.0) to (room.dn("planY") ?: 0.0)
 
-    fun localRects(room: Rec): List<R> = listOf(R(-width(room) / 2, -height(room) / 2, width(room), height(room))) +
-        parts(room).map { R(it.d("xOffset") - it.d("width") / 2, it.d("yOffset") - it.d("height") / 2, it.d("width"), it.d("height")) }
+    fun localRects(room: Rec): List<PRect> = listOf(PRect(-width(room) / 2, -height(room) / 2, width(room), height(room))) +
+        parts(room).map { PRect(it.d("xOffset") - it.d("width") / 2, it.d("yOffset") - it.d("height") / 2, it.d("width"), it.d("height")) }
 
-    fun worldRect(l: R, cx: Double, cy: Double, q: Int): R {
+    fun worldRect(l: PRect, cx: Double, cy: Double, q: Int): PRect {
         val a = rotate(l.minX, l.minY, q); val b = rotate(l.maxX, l.maxY, q)
-        return R(minOf(a.first, b.first) + cx, minOf(a.second, b.second) + cy, abs(a.first - b.first), abs(a.second - b.second))
+        return PRect(minOf(a.first, b.first) + cx, minOf(a.second, b.second) + cy, abs(a.first - b.first), abs(a.second - b.second))
     }
 
-    fun worldRects(room: Rec, c: Pair<Double, Double> = center(room)): List<R> {
+    fun worldRects(room: Rec, c: Pair<Double, Double> = center(room)): List<PRect> {
         val q = quarterTurns(room.d("rotation")); return localRects(room).map { worldRect(it, c.first, c.second, q) }
     }
 
-    fun bounds(rs: List<R>): R? = rs.reduceOrNull { a, b -> a.union(b) }
+    fun bounds(rs: List<PRect>): PRect? = rs.reduceOrNull { a, b -> a.union(b) }
 
-    fun unionArea(rects: List<R>): Double {
+    fun unionArea(rects: List<PRect>): Double {
         val xs = rects.flatMap { listOf(it.minX, it.maxX) }.distinct().sorted()
         if (xs.size < 2) return 0.0
         var total = 0.0
@@ -479,12 +479,12 @@ object Plan {
 
     fun area(room: Rec) = unionArea(localRects(room))
 
-    fun overlaps(a: List<R>, b: List<R>, tol: Double = 0.02): Boolean = a.any { r -> b.any { o ->
+    fun overlaps(a: List<PRect>, b: List<PRect>, tol: Double = 0.02): Boolean = a.any { r -> b.any { o ->
         minOf(r.maxX, o.maxX) - maxOf(r.minX, o.minX) > tol && minOf(r.maxY, o.maxY) - maxOf(r.minY, o.minY) > tol } }
 
     /** Free spot for a new room near `pref`, same search as iOS freeCenter. */
-    fun freeCenter(pref: Pair<Double, Double>, local: List<R>, q: Int, obstacles: List<List<R>>, gap: Double = 0.5): Pair<Double, Double> {
-        val padded = obstacles.map { o -> o.map { R(it.x - gap, it.y - gap, it.w + 2 * gap, it.h + 2 * gap) } }
+    fun freeCenter(pref: Pair<Double, Double>, local: List<PRect>, q: Int, obstacles: List<List<PRect>>, gap: Double = 0.5): Pair<Double, Double> {
+        val padded = obstacles.map { o -> o.map { PRect(it.x - gap, it.y - gap, it.w + 2 * gap, it.h + 2 * gap) } }
         fun fits(c: Pair<Double, Double>) = local.map { worldRect(it, c.first, c.second, q) }.let { rs -> padded.none { overlaps(rs, it, 0.0) } }
         if (fits(pref)) return pref
         for (ring in 1..80) {
@@ -499,10 +499,10 @@ object Plan {
     }
 
     /** The local rect a door sits on: its piece if it has one, else the main rectangle. */
-    fun hostRect(door: Rec, room: Rec): R {
+    fun hostRect(door: Rec, room: Rec): PRect {
         val part = parts(room).firstOrNull { it.id == door.link("part") }
-        return if (part != null) R(part.d("xOffset") - part.d("width") / 2, part.d("yOffset") - part.d("height") / 2, part.d("width"), part.d("height"))
-        else R(-width(room) / 2, -height(room) / 2, width(room), height(room))
+        return if (part != null) PRect(part.d("xOffset") - part.d("width") / 2, part.d("yOffset") - part.d("height") / 2, part.d("width"), part.d("height"))
+        else PRect(-width(room) / 2, -height(room) / 2, width(room), height(room))
     }
 
     fun dimensions(w: Double, h: Double) = "${w}m x ${h}m"
