@@ -76,9 +76,11 @@ object Repo {
                 .setLocalCacheSettings(PersistentCacheSettings.newBuilder().setSizeBytes(200L * 1024 * 1024).build())
                 .build()
         }
+        var first = true
         auth.addAuthStateListener { a ->
             val u = a.currentUser
-            if (u?.uid != user?.uid) { user = u; onUser(u) } else user = u
+            // The first callback must always run onUser, or a signed-out start never leaves the loading spinner.
+            if (first || u?.uid != user?.uid) { first = false; user = u; onUser(u) } else user = u
         }
     }
 
